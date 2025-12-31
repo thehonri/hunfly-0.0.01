@@ -9,6 +9,8 @@ import Recordings from "./pages/Recordings";
 import Ranking from "./pages/Ranking";
 import MeetingRoom from "./pages/MeetingRoom";
 import Settings from "./pages/Settings";
+import WhatsApp from "./pages/WhatsApp";
+import Team from "./pages/Team";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,6 +29,8 @@ const App = () => (
           <Route path="/ranking" element={<Ranking />} />
           <Route path="/meeting-room" element={<MeetingRoom />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/whatsapp" element={<WhatsApp />} />
+          <Route path="/team" element={<Team />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
