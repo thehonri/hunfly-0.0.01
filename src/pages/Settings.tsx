@@ -1,10 +1,7 @@
 import { motion } from "framer-motion";
 import { 
-  Settings as SettingsIcon, 
   User,
   Bell,
-  Shield,
-  Palette,
   MessageSquare,
   Save,
   BookOpen,
@@ -52,6 +49,39 @@ const crmIntegrations = [
   { id: "zoho", name: "Zoho CRM", connected: false, icon: "📊" },
   { id: "custom", name: "API Personalizada", connected: false, icon: "🔧" },
 ];
+
+const settingsSections = [
+  {
+    value: "ai",
+    label: "Inteligência Artificial",
+    description: "Ative assistentes e recursos inteligentes.",
+    icon: Sparkles,
+  },
+  {
+    value: "integrations",
+    label: "Integrações",
+    description: "Conecte agenda, CRM e canais.",
+    icon: Link2,
+  },
+  {
+    value: "profile",
+    label: "Perfil",
+    description: "Dados pessoais e preferências.",
+    icon: User,
+  },
+  {
+    value: "methodology",
+    label: "Metodologia de Vendas",
+    description: "Scripts e playbooks da equipe.",
+    icon: BookOpen,
+  },
+  {
+    value: "notifications",
+    label: "Notificações",
+    description: "Alertas e lembretes importantes.",
+    icon: Bell,
+  },
+] as const;
 
 const Settings = () => {
   const { toast } = useToast();
@@ -164,25 +194,32 @@ const Settings = () => {
         </motion.div>
 
         <Tabs defaultValue="ai" className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-[220px_1fr]">
+          <div className="grid gap-6 md:grid-cols-[260px_1fr]">
             <div className="space-y-3">
               <p className="text-sm font-medium text-muted-foreground">Seções</p>
-              <TabsList className="flex w-full flex-col items-stretch gap-1 bg-transparent p-0">
-                <TabsTrigger value="ai" className="justify-start">
-                  Inteligência Artificial
-                </TabsTrigger>
-                <TabsTrigger value="integrations" className="justify-start">
-                  Integrações
-                </TabsTrigger>
-                <TabsTrigger value="profile" className="justify-start">
-                  Perfil
-                </TabsTrigger>
-                <TabsTrigger value="methodology" className="justify-start">
-                  Metodologia de Vendas
-                </TabsTrigger>
-                <TabsTrigger value="notifications" className="justify-start">
-                  Notificações
-                </TabsTrigger>
+              <TabsList className="flex h-auto w-full flex-col items-stretch gap-2 bg-transparent p-0">
+                {settingsSections.map((section) => {
+                  const Icon = section.icon;
+                  return (
+                    <TabsTrigger
+                      key={section.value}
+                      value={section.value}
+                      className="w-full items-start justify-start gap-3 rounded-lg border border-transparent px-3 py-2 text-left data-[state=active]:border-primary/30 data-[state=active]:bg-primary/10"
+                    >
+                      <span className="mt-0.5 rounded-md bg-muted p-2 text-muted-foreground">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="space-y-1">
+                        <span className="block text-sm font-semibold text-foreground">
+                          {section.label}
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          {section.description}
+                        </span>
+                      </span>
+                    </TabsTrigger>
+                  );
+                })}
               </TabsList>
             </div>
 
