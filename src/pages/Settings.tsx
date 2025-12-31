@@ -23,8 +23,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+
+type AutoJoinRule = {
+  id: string;
+  funnel: string;
+  stage: string;
+  autoJoin: boolean;
+  recordMeeting: boolean;
+  guidanceEnabled: boolean;
+};
 
 const crmIntegrations = [
   { id: "hubspot", name: "HubSpot", connected: false, icon: "🔶" },
@@ -43,6 +60,15 @@ const Settings = () => {
   const [aiEnabled, setAiEnabled] = useState(true);
   const [showApiConfig, setShowApiConfig] = useState(false);
   const [selectedCrm, setSelectedCrm] = useState<string | null>(null);
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleAccountEmail, setGoogleAccountEmail] = useState("");
+  const [googleCalendarId, setGoogleCalendarId] = useState("primary");
+  const [autoJoinRules, setAutoJoinRules] = useState<AutoJoinRule[]>([]);
+  const [ruleFunnel, setRuleFunnel] = useState("Funil Principal");
+  const [ruleStage, setRuleStage] = useState("Diagnóstico");
+  const [ruleAutoJoin, setRuleAutoJoin] = useState(true);
+  const [ruleRecordMeeting, setRuleRecordMeeting] = useState(true);
+  const [ruleGuidanceEnabled, setRuleGuidanceEnabled] = useState(true);
 
   const handleConnect = (crmId: string) => {
     if (crmId === "custom") {
@@ -81,6 +107,46 @@ const Settings = () => {
     toast({
       title: "Integração removida",
       description: "A conexão foi desfeita com sucesso.",
+    });
+  };
+
+  const handleConnectGoogle = () => {
+    setGoogleConnected(true);
+    toast({
+      title: "Google Agenda conectado!",
+      description: "Sua agenda foi vinculada para detectar reuniões automaticamente.",
+    });
+  };
+
+  const handleDisconnectGoogle = () => {
+    setGoogleConnected(false);
+    toast({
+      title: "Integração removida",
+      description: "A conexão com o Google Agenda foi desfeita.",
+    });
+  };
+
+  const handleAddRule = () => {
+    const newRule: AutoJoinRule = {
+      id: crypto.randomUUID(),
+      funnel: ruleFunnel,
+      stage: ruleStage,
+      autoJoin: ruleAutoJoin,
+      recordMeeting: ruleRecordMeeting,
+      guidanceEnabled: ruleGuidanceEnabled,
+    };
+    setAutoJoinRules((prev) => [newRule, ...prev]);
+    toast({
+      title: "Regra adicionada",
+      description: `A IA vai acompanhar reuniões do funil ${ruleFunnel} na etapa ${ruleStage}.`,
+    });
+  };
+
+  const handleRemoveRule = (ruleId: string) => {
+    setAutoJoinRules((prev) => prev.filter((rule) => rule.id !== ruleId));
+    toast({
+      title: "Regra removida",
+      description: "A regra de acompanhamento foi excluída.",
     });
   };
 
@@ -147,12 +213,211 @@ const Settings = () => {
             </CardContent>
           </Card>
         </motion.div>
+        
+        {/* Google Calendar Integration */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+        >
+          <Card variant="glass">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ExternalLink className="w-5 h-5 text-primary" />
+                Google Agenda
+              </CardTitle>
+              <CardDescription>
+                Vincule sua agenda para a IA entrar nas reuniões e gerar direcionamentos.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex flex-col gap-4 rounded-lg border border-border bg-secondary/40 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">Status da integração</p>
+                    <p className="text-sm text-muted-foreground">
+                      {googleConnected
+                        ? "Conectado e monitorando sua agenda."
+                        : "Conecte sua conta Google para habilitar o assistente em reuniões."}
+                    </p>
+                  </div>
+                  {googleConnected ? (
+                    <Badge variant="outline" className="bg-success/10 text-success border-success/30">
+                      <Check className="w-3 h-3 mr-1" />
+                      Ativo
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline">Desconectado</Badge>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="google-email">E-mail vinculado</Label>
+                    <Input
+                      id="google-email"
+                      type="email"
+                      placeholder="ex: agenda@empresa.com"
+                      value={googleAccountEmail}
+                      onChange={(e) => setGoogleAccountEmail(e.target.value)}
+                      disabled={!googleConnected}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="google-calendar">ID do calendário</Label>
+                    <Input
+                      id="google-calendar"
+                      placeholder="primary"
+                      value={googleCalendarId}
+                      onChange={(e) => setGoogleCalendarId(e.target.value)}
+                      disabled={!googleConnected}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {googleConnected ? (
+                    <>
+                      <Button variant="outline" className="gap-2">
+                        <RefreshCw className="w-4 h-4" />
+                        Sincronizar agora
+                      </Button>
+                      <Button variant="ghost" className="gap-2" onClick={handleDisconnectGoogle}>
+                        Desconectar
+                      </Button>
+                    </>
+                  ) : (
+                    <Button variant="gradient" className="gap-2" onClick={handleConnectGoogle}>
+                      <ExternalLink className="w-4 h-4" />
+                      Conectar Google
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Regras de acompanhamento automático</p>
+                    <p className="text-sm text-muted-foreground">
+                      Defina quais reuniões devem ser acompanhadas pela IA com gravação e insights.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Funil</Label>
+                      <Select value={ruleFunnel} onValueChange={setRuleFunnel}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o funil" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Funil Principal">Funil Principal</SelectItem>
+                          <SelectItem value="Outbound Enterprise">Outbound Enterprise</SelectItem>
+                          <SelectItem value="Inbound Marketing">Inbound Marketing</SelectItem>
+                          <SelectItem value="Parcerias">Parcerias</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Etapa</Label>
+                      <Select value={ruleStage} onValueChange={setRuleStage}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a etapa" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Diagnóstico">Diagnóstico</SelectItem>
+                          <SelectItem value="Demonstração">Demonstração</SelectItem>
+                          <SelectItem value="Proposta">Proposta</SelectItem>
+                          <SelectItem value="Negociação">Negociação</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3">
+                    <div className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
+                      <div>
+                        <p className="font-medium">IA entra automaticamente</p>
+                        <p className="text-sm text-muted-foreground">
+                          O assistente entra na call quando detectar reunião qualificada.
+                        </p>
+                      </div>
+                      <Switch checked={ruleAutoJoin} onCheckedChange={setRuleAutoJoin} />
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
+                      <div>
+                        <p className="font-medium">Gravar e transcrever reunião</p>
+                        <p className="text-sm text-muted-foreground">Gere transcrição e destaques.</p>
+                      </div>
+                      <Switch checked={ruleRecordMeeting} onCheckedChange={setRuleRecordMeeting} />
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
+                      <div>
+                        <p className="font-medium">Direcionamento em tempo real</p>
+                        <p className="text-sm text-muted-foreground">
+                          Dicas rápidas da IA durante a reunião.
+                        </p>
+                      </div>
+                      <Switch checked={ruleGuidanceEnabled} onCheckedChange={setRuleGuidanceEnabled} />
+                    </div>
+                  </div>
+
+                  <Button className="w-full gap-2" onClick={handleAddRule} disabled={!googleConnected}>
+                    <Plus className="w-4 h-4" />
+                    Adicionar regra
+                  </Button>
+                  {!googleConnected && (
+                    <p className="text-xs text-muted-foreground">
+                      Conecte o Google Agenda para habilitar o cadastro de regras.
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  {autoJoinRules.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                      Nenhuma regra criada ainda. Adicione uma regra para a IA acompanhar reuniões.
+                    </div>
+                  ) : (
+                    autoJoinRules.map((rule) => (
+                      <div
+                        key={rule.id}
+                        className="flex flex-col gap-3 rounded-lg border border-border bg-secondary/30 p-4 md:flex-row md:items-center md:justify-between"
+                      >
+                        <div className="space-y-1">
+                          <p className="font-medium">
+                            {rule.funnel} · {rule.stage}
+                          </p>
+                          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            <Badge variant="outline">Auto-join: {rule.autoJoin ? "On" : "Off"}</Badge>
+                            <Badge variant="outline">
+                              Gravação: {rule.recordMeeting ? "On" : "Off"}
+                            </Badge>
+                            <Badge variant="outline">
+                              Direcionamento: {rule.guidanceEnabled ? "On" : "Off"}
+                            </Badge>
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => handleRemoveRule(rule.id)}>
+                          Remover
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
 
         {/* CRM Integrations */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.25 }}
         >
           <Card variant="glass">
             <CardHeader>
