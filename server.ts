@@ -405,4 +405,34 @@ wss.on("connection", async (ws: any, req: any) => {
   } catch {
     ws.close(1008, "Invalid token");
   }
+import { upload } from "./uploads";
+
+// ...
+
+app.post(
+  "/api/meetings/:meetingId/audio",
+  requireAuth,
+  upload.single("audio"),
+  async (req: any, res) => {
+    try {
+      const meetingId = req.params.meetingId;
+      if (!meetingId) return res.status(400).json({ error: "meetingId é obrigatório" });
+
+      if (!req.file) return res.status(400).json({ error: "Arquivo 'audio' é obrigatório" });
+
+      // Aqui você salva no DB se quiser (meetingId, userId, file path, created_at)
+      // Por enquanto só retorna sucesso.
+      return res.json({
+        ok: true,
+        meetingId,
+        filename: req.file.filename,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+      });
+    } catch (e: any) {
+      return res.status(500).json({ error: e?.message || "Falha no upload" });
+    }
+  }
+);
 });
