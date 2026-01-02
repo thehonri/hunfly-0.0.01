@@ -1,211 +1,193 @@
-import express from "express";
-import { createServer } from "http";
-import { WebSocketServer } from "ws";
-import path from "path";
-import { fileURLToPath } from "url";
-import { WhatsAppManager } from "./server/whatsapp.js";
-import cors from "cors";
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { WebSocketServer } from 'ws';
+import { createClient } from '@supabase/supabase-js';
+import { jwtVerify, SignJWT } from 'jose';
+import QRCode from 'qrcode';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// whatsapp-web.js é CommonJS -> em ESM precisa default import:
+import pkg from 'whatsapp-web.js';
+const { Client, LocalAuth } = pkg;
 
 const app = express();
-const server = createServer(app);
-const wss = new WebSocketServer({ server });
+app.use(express.json({ limit: '2mb' }));
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, "dist")));
+// Segurança HTTP
+app.use(helmet());
 
-// Initialize WhatsApp Manager
-const whatsappManager = new WhatsAppManager();
+// Rate limit (ajuste conforme necessidade)
+app.use(
+  rateLimit({
+    windowMs: 60_000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
 
-// WebSocket connection handler
-wss.on("connection", (ws) => {
-  console.log("Client connected to WebSocket");
+// CORS estrito (NÃO use origin: '*')
+const WEB_ORIGIN = process.env.WEB_ORIGIN;
+if (!WEB_ORIGIN) throw new Error('WEB_ORIGIN is required in .env');
 
-  // Send initial QR code if available
-  const qrData = whatsappManager.getQRCode();
-  if (qrData.qr) {
-    ws.send(
-      JSON.stringify({
-        type: "qr",
-        qr: qrData.qr,
-        isConnected: qrData.isConnected,
-        isReady: qrData.isReady,
-      })
-    );
+app.use(
+  cors({
+    origin: WEB_ORIGIN,
+    credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  }),
+);
+
+// Supabase (Service Role só no backend)
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required');
+}
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// JWT curto para sessão WS
+const APP_JWT_SECRET = process.env.APP_JWT_SECRET;
+if (!APP_JWT_SECRET) throw new Error('APP_JWT_SECRET is required');
+const jwtKey = new TextEncoder().encode(APP_JWT_SECRET);
+
+// --------- Helpers de Auth ---------
+async function requireAuth(req, res, next) {
+  try {
+    const auth = req.headers.authorization || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    if (!token) return res.status(401).json({ error: 'Missing token' });
+
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) return res.status(401).json({ error: 'Invalid token' });
+
+    req.user = data.user;
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
+}
 
-  // Listen for QR code updates
-  const qrListener = (qr: string) => {
-    ws.send(
-      JSON.stringify({
-        type: "qr",
-        qr: qr,
-        isConnected: whatsappManager.isConnected(),
-        isReady: whatsappManager.isReady(),
-      })
-    );
-  };
+// --------- Rotas básicas ---------
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-  // Listen for authentication
-  const authListener = () => {
-    ws.send(
-      JSON.stringify({
-        type: "authenticated",
-        message: "WhatsApp connected successfully",
-      })
-    );
-  };
+app.get('/api/me', requireAuth, (req, res) => {
+  res.json({ id: req.user.id, email: req.user.email });
+});
 
-  // Listen for disconnection
-  const disconnectListener = () => {
-    ws.send(
-      JSON.stringify({
-        type: "disconnected",
-        message: "WhatsApp disconnected",
-      })
-    );
-  };
+// --------- Live Session (WS token curto) ---------
+app.post('/api/live-sessions', requireAuth, async (req, res) => {
+  const meetingId = req.body.meetingId;
+  if (!meetingId) return res.status(400).json({ error: 'meetingId is required' });
 
-  // Listen for errors
-  const errorListener = (error: Error) => {
-    ws.send(
-      JSON.stringify({
-        type: "error",
-        message: error.message,
-      })
-    );
-  };
+  const token = await new SignJWT({
+    sub: req.user.id,
+    meetingId,
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('10m')
+    .sign(jwtKey);
 
-  whatsappManager.on("qr", qrListener);
-  whatsappManager.on("authenticated", authListener);
-  whatsappManager.on("disconnected", disconnectListener);
-  whatsappManager.on("error", errorListener);
+  res.json({
+    meetingId,
+    wsUrl: `ws://localhost:3001/ws/live?token=${token}`,
+    token,
+  });
+});
 
-  // Handle incoming messages
-  ws.on("message", async (data) => {
-    try {
-      const message = JSON.parse(data.toString());
+// --------- WhatsApp (QR + status + send) ---------
+let latestQrDataUrl = null;
+let whatsappReady = false;
 
-      if (message.type === "initialize") {
-        await whatsappManager.initialize();
-      } else if (message.type === "disconnect") {
-        await whatsappManager.disconnect();
+const whatsapp = new Client({
+  authStrategy: new LocalAuth({ dataPath: process.env.WHATSAPP_SESSION_DIR || '.wwebjs_auth' }),
+  puppeteer: {
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  },
+});
+
+whatsapp.on('qr', async (qr) => {
+  latestQrDataUrl = await QRCode.toDataURL(qr);
+  whatsappReady = false;
+  console.log('[WhatsApp] QR updated');
+});
+
+whatsapp.on('ready', () => {
+  whatsappReady = true;
+  latestQrDataUrl = null;
+  console.log('[WhatsApp] Ready');
+});
+
+whatsapp.on('disconnected', () => {
+  whatsappReady = false;
+  console.log('[WhatsApp] Disconnected');
+});
+
+whatsapp.initialize().catch(console.error);
+
+app.get('/api/whatsapp/status', requireAuth, (_req, res) => {
+  res.json({ connected: whatsappReady });
+});
+
+app.get('/api/whatsapp/qr', requireAuth, (_req, res) => {
+  if (whatsappReady) return res.json({ connected: true, qr: null });
+  return res.json({ connected: false, qr: latestQrDataUrl });
+});
+
+app.post('/api/whatsapp/send', requireAuth, async (req, res) => {
+  try {
+    if (!whatsappReady) return res.status(400).json({ error: 'WhatsApp not connected' });
+
+    const { phone, message } = req.body || {};
+    if (!phone || !message) return res.status(400).json({ error: 'phone and message are required' });
+
+    const chatId = `${String(phone).replace(/\D/g, '')}@c.us`;
+    const result = await whatsapp.sendMessage(chatId, String(message));
+
+    res.json({ ok: true, id: result.id?.id || null });
+  } catch (e) {
+    res.status(500).json({ error: e?.message || 'Failed to send' });
+  }
+});
+
+const PORT = 3001;
+const server = app.listen(PORT, () => {
+  console.log(`API listening on http://localhost:${PORT}`);
+});
+
+const wss = new WebSocketServer({ server, path: '/ws/live' });
+
+wss.on('connection', async (ws, req) => {
+  try {
+    const url = new URL(req.url || '', `http://${req.headers.host}`);
+    const token = url.searchParams.get('token');
+    if (!token) {
+      ws.close(1008, 'Missing token');
+      return;
+    }
+
+    const { payload } = await jwtVerify(token, jwtKey);
+    const meetingId = payload.meetingId;
+    const userId = payload.sub;
+
+    ws.send(JSON.stringify({ type: 'connected', meetingId, userId }));
+
+    ws.on('message', (data) => {
+      if (data instanceof Buffer && data.length > 2_000_000) {
+        ws.close(1009, 'Message too large');
+        return;
       }
-    } catch (error) {
-      console.error("WebSocket message error:", error);
-    }
-  });
 
-  // Handle client disconnect
-  ws.on("close", () => {
-    console.log("Client disconnected from WebSocket");
-    whatsappManager.off("qr", qrListener);
-    whatsappManager.off("authenticated", authListener);
-    whatsappManager.off("disconnected", disconnectListener);
-    whatsappManager.off("error", errorListener);
-  });
+      ws.send(JSON.stringify({ type: 'ack' }));
+    });
 
-  ws.on("error", (error) => {
-    console.error("WebSocket error:", error);
-  });
-});
-
-// API Routes
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "ok",
-    whatsapp: {
-      isConnected: whatsappManager.isConnected(),
-      isReady: whatsappManager.isReady(),
-    },
-  });
-});
-
-app.get("/api/whatsapp/status", (req, res) => {
-  res.json({
-    isConnected: whatsappManager.isConnected(),
-    isReady: whatsappManager.isReady(),
-    qr: whatsappManager.getQRCode().qr || null,
-  });
-});
-
-app.get("/api/whatsapp/chats", async (req, res) => {
-  try {
-    if (!whatsappManager.isReady()) {
-      return res.status(400).json({ error: "WhatsApp not connected" });
-    }
-
-    const chats = await whatsappManager.getChats();
-    res.json(chats);
-  } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    ws.on('close', () => {});
+  } catch {
+    ws.close(1008, 'Invalid token');
   }
-});
-
-app.get("/api/whatsapp/messages/:chatId", async (req, res) => {
-  try {
-    if (!whatsappManager.isReady()) {
-      return res.status(400).json({ error: "WhatsApp not connected" });
-    }
-
-    const { chatId } = req.params;
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
-    const messages = await whatsappManager.getMessages(chatId, limit);
-    res.json(messages);
-  } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
-  }
-});
-
-app.post("/api/whatsapp/send-message", async (req, res) => {
-  try {
-    if (!whatsappManager.isReady()) {
-      return res.status(400).json({ error: "WhatsApp not connected" });
-    }
-
-    const { chatId, message } = req.body;
-    if (!chatId || !message) {
-      return res.status(400).json({ error: "Missing chatId or message" });
-    }
-
-    const success = await whatsappManager.sendMessage(chatId, message);
-    res.json({ success, message: "Message sent" });
-  } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
-  }
-});
-
-app.post("/api/whatsapp/disconnect", async (req, res) => {
-  try {
-    await whatsappManager.disconnect();
-    res.json({ success: true, message: "WhatsApp disconnected" });
-  } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
-  }
-});
-
-// Serve React app for all other routes
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "dist", "index.html"));
-});
-
-// Start server
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`WebSocket available at ws://localhost:${PORT}`);
-});
-
-// Graceful shutdown
-process.on("SIGINT", async () => {
-  console.log("Shutting down...");
-  await whatsappManager.disconnect();
-  server.close(() => {
-    console.log("Server closed");
-    process.exit(0);
-  });
 });
