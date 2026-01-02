@@ -46,4 +46,5 @@ export function MeetingAudioUpload({ meetingId }: { meetingId: string }) {
       {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
     </div>
   );
+<MeetingAudioUpload meetingId={meetingId} />
 }
