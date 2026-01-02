@@ -1,3 +1,4 @@
+import { supabase } from "@/lib/supabase";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Zap } from "lucide-react";
@@ -11,28 +12,50 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return; // evita double-submit
+
     setIsLoading(true);
-    
-    // Simulated login - will be replaced with real auth
-    setTimeout(() => {
-      setIsLoading(false);
+    setErr(null);
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) throw error;
+
       toast({
         title: "Login realizado!",
         description: "Bem-vindo de volta à plataforma.",
       });
+
       navigate("/dashboard");
-    }, 1500);
+    } catch (e: any) {
+      const msg = e?.message || "Verifique e-mail e senha.";
+      setErr(msg);
+
+      toast({
+        title: "Erro no login",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <div className="min-h-screen flex">
       {/* Left Panel - Branding */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, x: -50 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.6 }}
@@ -40,11 +63,10 @@ const Login = () => {
       >
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-accent/10 via-transparent to-transparent" />
-        
-        {/* Floating Elements */}
+
         <div className="absolute top-20 left-20 w-72 h-72 bg-primary/5 rounded-full blur-3xl animate-pulse-slow" />
         <div className="absolute bottom-32 right-20 w-96 h-96 bg-accent/5 rounded-full blur-3xl animate-pulse-slow" />
-        
+
         <div className="relative z-10 flex flex-col justify-center px-16">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -57,17 +79,17 @@ const Login = () => {
               </div>
               <span className="text-2xl font-display font-bold">SalesAI</span>
             </div>
-            
+
             <h1 className="text-5xl font-display font-bold leading-tight mb-6">
               Transforme seu
               <br />
               <span className="gradient-text">time comercial</span>
             </h1>
-            
+
             <p className="text-xl text-muted-foreground max-w-md leading-relaxed">
               IA que treina, acompanha e impulsiona a performance do seu time de vendas em tempo real.
             </p>
-            
+
             <div className="mt-12 flex gap-8">
               <div className="text-center">
                 <div className="text-4xl font-display font-bold gradient-text">+47%</div>
@@ -85,23 +107,22 @@ const Login = () => {
           </motion.div>
         </div>
       </motion.div>
-      
+
       {/* Right Panel - Login Form */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6 }}
         className="w-full lg:w-1/2 flex items-center justify-center p-8"
       >
         <div className="w-full max-w-md">
-          {/* Mobile Logo */}
           <div className="lg:hidden flex items-center gap-3 mb-12 justify-center">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center glow">
               <Zap className="w-6 h-6 text-primary-foreground" />
             </div>
             <span className="text-xl font-display font-bold">SalesAI</span>
           </div>
-          
+
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -109,7 +130,7 @@ const Login = () => {
           >
             <h2 className="text-3xl font-display font-bold mb-2">Bem-vindo de volta</h2>
             <p className="text-muted-foreground mb-8">Entre para acessar sua plataforma</p>
-            
+
             <form onSubmit={handleLogin} className="space-y-5">
               <div className="space-y-2">
                 <label className="text-sm font-medium">E-mail</label>
@@ -122,10 +143,11 @@ const Login = () => {
                     onChange={(e) => setEmail(e.target.value)}
                     className="pl-12"
                     required
+                    autoComplete="email"
                   />
                 </div>
               </div>
-              
+
               <div className="space-y-2">
                 <label className="text-sm font-medium">Senha</label>
                 <div className="relative">
@@ -137,6 +159,7 @@ const Login = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     className="pl-12 pr-12"
                     required
+                    autoComplete="current-password"
                   />
                   <button
                     type="button"
@@ -147,21 +170,11 @@ const Login = () => {
                   </button>
                 </div>
               </div>
-              
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="w-4 h-4 rounded border-border bg-input accent-primary" />
-                  <span className="text-sm text-muted-foreground">Lembrar de mim</span>
-                </label>
-                <a href="#" className="text-sm text-primary hover:underline">
-                  Esqueci minha senha
-                </a>
-              </div>
-              
-              <Button 
-                type="submit" 
-                variant="gradient" 
-                size="lg" 
+
+              <Button
+                type="submit"
+                variant="gradient"
+                size="lg"
                 className="w-full"
                 disabled={isLoading}
               >
@@ -174,8 +187,10 @@ const Login = () => {
                   </>
                 )}
               </Button>
+
+              {err && <p className="text-sm text-red-600">{err}</p>}
             </form>
-            
+
             <div className="mt-8 text-center">
               <p className="text-sm text-muted-foreground">
                 Ainda não tem uma conta?{" "}
