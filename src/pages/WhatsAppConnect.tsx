@@ -5,6 +5,7 @@ import { Loader2, QrCode, CheckCircle2, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { supabase } from "@/lib/supabase";
 
 const WhatsAppConnect = () => {
   const navigate = useNavigate();
@@ -12,55 +13,71 @@ const WhatsAppConnect = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>("");
-  const [ws, setWs] = useState<WebSocket | null>(null);
 
   useEffect(() => {
-    // Connect to WebSocket for real-time QR Code updates
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/api/ws/whatsapp`;
-    
-    const websocket = new WebSocket(wsUrl);
+    let intervalId: NodeJS.Timeout;
 
-    websocket.onopen = () => {
-      console.log("WebSocket connected");
-      setWs(websocket);
-      setIsLoading(false);
-    };
+    const checkStatus = async () => {
+      try {
+        const session = await supabase.auth.getSession();
+        const token = session.data.session?.access_token;
 
-    websocket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      if (data.type === "qr") {
-        setQrCode(data.qr);
-        setError("");
-      } else if (data.type === "authenticated") {
-        setIsConnected(true);
-        setTimeout(() => {
-          navigate("/whatsapp");
-        }, 2000);
-      } else if (data.type === "error") {
-        setError(data.message);
+        if (!token) {
+          setError("Sessão expirada. Faça login novamente.");
+          return;
+        }
+
+        const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3001"}/api/whatsapp/qr`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+
+        if (!res.ok) {
+          throw new Error("Falha ao buscar status");
+        }
+
+        const data = await res.json();
+
+        if (data.connected) {
+          setIsConnected(true);
+          setIsLoading(false);
+          // Redireciona após 2 segundos se conectado
+          setTimeout(() => navigate("/whatsapp"), 2000);
+        } else if (data.qr) {
+          setQrCode(data.qr);
+          setIsLoading(false);
+          setError("");
+        } else {
+          // QR ainda não gerado, aguardando...
+          // Pode acionar init se necessário, mas backend deve fazer isso.
+          setIsLoading(true);
+
+          // Opcional: Tentar inicializar se demorar muito
+          if (data.hint) {
+            // Força init se backend pedir
+            await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3001"}/api/whatsapp/init`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${token}` }
+            });
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        // Não mostra erro visualmente para não piscar, só loga
       }
     };
 
-    websocket.onerror = () => {
-      setError("Erro ao conectar ao servidor. Tente novamente.");
-      setIsLoading(false);
-    };
+    // Check immediately
+    checkStatus();
+    // Poll every 2 seconds
+    intervalId = setInterval(checkStatus, 2000);
 
-    websocket.onclose = () => {
-      console.log("WebSocket disconnected");
-    };
-
-    return () => {
-      websocket.close();
-    };
+    return () => clearInterval(intervalId);
   }, [navigate]);
 
-  const handleDisconnect = () => {
-    if (ws) {
-      ws.send(JSON.stringify({ type: "disconnect" }));
-    }
+  const handleDisconnect = async () => {
+    // Apenas limpa estado local, desconexão real seria via endpoint de logout
     setQrCode("");
     setIsConnected(false);
   };
@@ -91,7 +108,7 @@ const WhatsAppConnect = () => {
               <div className="flex flex-col items-center justify-center py-12 space-y-4">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 <p className="text-sm text-muted-foreground">
-                  Carregando QR Code...
+                  Buscando QR Code...
                 </p>
               </div>
             ) : isConnected ? (
@@ -130,7 +147,7 @@ const WhatsAppConnect = () => {
                     Abra o WhatsApp no seu telefone
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Configurações → Dispositivos Vinculados → Vincular um Dispositivo
+                    Menu (3 pontos) → Aparelhos conectados → Conectar aparelho
                   </p>
                 </div>
                 <Button
@@ -138,10 +155,14 @@ const WhatsAppConnect = () => {
                   onClick={handleDisconnect}
                   className="w-full"
                 >
-                  Desconectar
+                  Cancelar
                 </Button>
               </motion.div>
-            ) : null}
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                Tentando iniciar sessão...
+              </div>
+            )}
 
             {error && (
               <Alert variant="destructive">
@@ -153,7 +174,7 @@ const WhatsAppConnect = () => {
         </Card>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Sua conexão é segura e privada. Nenhum dado é armazenado em nossos servidores.
+          Sua conexão é segura e privada.
         </p>
       </motion.div>
     </div>

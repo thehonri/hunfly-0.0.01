@@ -6,10 +6,14 @@ import rateLimit from "express-rate-limit";
 import { WebSocketServer } from "ws";
 import { createClient } from "@supabase/supabase-js";
 import { jwtVerify, SignJWT } from "jose";
+import QRCode from "qrcode";
 import { upload } from "./server/uploads";
 import { Logger } from "./server/logger";
 import { errorHandler } from "./server/middleware/error";
-import { whatsappManager } from "./server/whatsapp";
+
+// whatsapp-web.js é CommonJS -> em ESM precisa default import:
+import pkg from "whatsapp-web.js";
+const { Client, LocalAuth } = pkg;
 
 const app = express();
 
@@ -181,45 +185,98 @@ app.post(
 );
 
 /** =========================
- *  WhatsApp (Via Manager)
+ *  WhatsApp (QR + status + init + logout + send)
  *  ========================= */
+let latestQrDataUrl: string | null = null;
+let latestQrAt: number | null = null;
+let whatsappReady = false;
+let whatsappInitializing = false;
 
-// Inicializa no boot
-whatsappManager.initialize().catch((e) => {
-  Logger.error(`[Server] Failed to init WhatsApp: ${e}`);
+// WhatsApp client (MVP: 1 instância)
+// Futuro: criar uma instância por org_id
+const whatsapp = new Client({
+  authStrategy: new LocalAuth({
+    clientId: "ascend-sales-engine",
+    dataPath: process.env.WHATSAPP_SESSION_DIR || ".wwebjs_auth",
+  }),
+  puppeteer: {
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  },
+});
+
+function isQrFresh() {
+  if (!latestQrAt) return false;
+  // QR expira rápido; mantemos 60s como "fresh"
+  return Date.now() - latestQrAt < 60_000;
+}
+
+whatsapp.on("qr", async (qr: string) => {
+  latestQrDataUrl = await QRCode.toDataURL(qr);
+  latestQrAt = Date.now();
+  whatsappReady = false;
+  whatsappInitializing = false;
+  Logger.info("[WhatsApp] QR updated");
+});
+
+whatsapp.on("ready", () => {
+  whatsappReady = true;
+  whatsappInitializing = false;
+  latestQrDataUrl = null;
+  latestQrAt = null;
+  Logger.info("[WhatsApp] Ready");
+});
+
+whatsapp.on("disconnected", (reason: any) => {
+  whatsappReady = false;
+  whatsappInitializing = false;
+  Logger.warn(`[WhatsApp] Disconnected: ${reason}`);
+});
+
+whatsapp.on("auth_failure", (msg: any) => {
+  whatsappReady = false;
+  whatsappInitializing = false;
+  Logger.error(`[WhatsApp] Auth failure: ${msg}`);
+});
+
+// inicializa no boot
+whatsappInitializing = true;
+whatsapp.initialize().catch((e: any) => {
+  whatsappInitializing = false;
+  Logger.error(`[WhatsApp] init error: ${e?.message || e}`);
 });
 
 app.get("/api/whatsapp/status", requireAuth, (_req, res) => {
-  const status = whatsappManager.getStatus();
   res.json({
-    connected: status.connected,
-    initializing: status.initializing,
+    connected: whatsappReady,
+    initializing: whatsappInitializing,
   });
 });
 
 app.get("/api/whatsapp/qr", requireAuth, (_req, res) => {
-  const status = whatsappManager.getStatus();
+  if (whatsappReady) return res.json({ connected: true, qr: null });
 
-  if (status.connected) return res.json({ connected: true, qr: null });
-
-  if (!status.qr) {
+  // evita devolver QR velho
+  if (!latestQrDataUrl || !isQrFresh()) {
     return res.json({
       connected: false,
       qr: null,
       hint: "QR not available yet. Try again.",
     });
   }
-  return res.json({ connected: false, qr: status.qr });
+  return res.json({ connected: false, qr: latestQrDataUrl });
 });
 
+// Força (re)inicialização — útil quando caiu sessão
 app.post("/api/whatsapp/init", requireAuth, async (_req, res, next) => {
   try {
-    const status = whatsappManager.getStatus();
-    if (status.connected) return res.json({ ok: true, connected: true });
+    if (whatsappReady) return res.json({ ok: true, connected: true });
 
-    if (!status.initializing) {
-      whatsappManager.initialize().catch((e) => {
-        Logger.error(`[Server] re-init error: ${e}`);
+    if (!whatsappInitializing) {
+      whatsappInitializing = true;
+      whatsapp.initialize().catch((e: any) => {
+        whatsappInitializing = false;
+        Logger.error(`[WhatsApp] re-init error: ${e?.message || e}`);
       });
     }
     res.json({ ok: true, connected: false, initializing: true });
@@ -228,13 +285,20 @@ app.post("/api/whatsapp/init", requireAuth, async (_req, res, next) => {
   }
 });
 
+// Logout/disconnect (manual)
 app.post("/api/whatsapp/logout", requireAuth, async (_req, res, next) => {
   try {
-    await whatsappManager.destroy();
+    await whatsapp.destroy();
+    whatsappReady = false;
+    whatsappInitializing = false;
+    latestQrDataUrl = null;
+    latestQrAt = null;
 
-    // Opcional: reiniciar automaticamente após logout para gerar novo QR
-    whatsappManager.initialize().catch((e) => {
-      Logger.error(`[Server] re-init after logout error: ${e}`);
+    // recria sessão para re-QR
+    whatsappInitializing = true;
+    whatsapp.initialize().catch((e: any) => {
+      whatsappInitializing = false;
+      Logger.error(`[WhatsApp] init error after logout: ${e?.message || e}`);
     });
 
     res.json({ ok: true });
@@ -257,15 +321,14 @@ app.post(
   whatsappSendLimiter,
   async (req, res, next) => {
     try {
-      const status = whatsappManager.getStatus();
-      if (!status.connected)
+      if (!whatsappReady)
         return res.status(400).json({ error: "WhatsApp not connected" });
 
       const phone = sanitizePhone(req.body?.phone);
       const message = sanitizeMessage(req.body?.message);
 
       const chatId = `${phone}@c.us`;
-      const result = await whatsappManager.sendMessage(chatId, message);
+      const result = await whatsapp.sendMessage(chatId, message);
 
       res.json({ ok: true, id: result?.id?.id || null });
     } catch (e: any) {

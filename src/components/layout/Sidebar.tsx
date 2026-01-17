@@ -1,11 +1,11 @@
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { 
-  LayoutDashboard, 
-  Video, 
-  PlayCircle, 
-  Settings, 
-  Users, 
+import {
+  LayoutDashboard,
+  Video,
+  PlayCircle,
+  Settings,
+  Users,
   Trophy,
   MessageSquare,
   Zap,
@@ -18,14 +18,14 @@ const menuItems = [
   { icon: Video, label: "Sala de Reunião", path: "/meeting-room" },
   { icon: PlayCircle, label: "Reuniões Gravadas", path: "/recordings" },
   { icon: Trophy, label: "Ranking", path: "/ranking" },
-  { icon: MessageSquare, label: "WhatsApp", path: "/whatsapp" },
+  { icon: MessageSquare, label: "WhatsApp", path: "/whatsapp-connect" },
   { icon: Users, label: "Time", path: "/team" },
   { icon: Settings, label: "Configurações", path: "/settings" },
 ];
 
 const Sidebar = () => {
   const location = useLocation();
-  
+
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar border-r border-sidebar-border flex flex-col z-50">
       {/* Logo */}
@@ -37,7 +37,7 @@ const Sidebar = () => {
           <span className="text-xl font-display font-bold">SalesAI</span>
         </Link>
       </div>
-      
+
       {/* Navigation */}
       <nav className="flex-1 p-4 overflow-y-auto">
         <ul className="space-y-1">
@@ -49,8 +49,8 @@ const Sidebar = () => {
                   to={item.path}
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 group relative",
-                    isActive 
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground" 
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
                       : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
                   )}
                 >
@@ -76,7 +76,7 @@ const Sidebar = () => {
           })}
         </ul>
       </nav>
-      
+
       {/* User Profile */}
       <div className="p-4 border-t border-sidebar-border">
         <div className="glass rounded-lg p-4">
