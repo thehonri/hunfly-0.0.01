@@ -29,7 +29,11 @@
         "test:e2e": "playwright test",
         "db:generate": "drizzle-kit generate:pg --config=drizzle.config.ts",
         "db:push": "drizzle-kit push:pg --config=drizzle.config.ts",
-        "db:studio": "drizzle-kit studio --config=drizzle.config.ts"
+        "db:studio": "drizzle-kit studio --config=drizzle.config.ts",
+        "setup:check-infra": "node scripts/check-infra.js",
+        "setup:validate-env": "node scripts/validate-env.js",
+        "setup:seed": "node scripts/run-seed.js",
+        "setup:all": "npm run setup:check-infra && npm run setup:validate-env && npm run db:push && npm run setup:seed"
     },
     "dependencies": {
         "@fontsource/inter": "^5.2.8",
