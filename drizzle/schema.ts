@@ -9,7 +9,53 @@ import {
   integer,
   uuid,
   pgEnum,
+  unique,
+  index,
 } from "drizzle-orm/pg-core";
+
+// ========================================
+// ENUMS
+// ========================================
+
+export const tenantStatus = pgEnum("tenant_status", [
+  "active",
+  "suspended",
+  "deleted",
+]);
+
+export const tenantPlan = pgEnum("tenant_plan", [
+  "starter",
+  "pro",
+  "enterprise",
+]);
+
+export const memberRole = pgEnum("member_role", [
+  "super_admin",
+  "tenant_admin",
+  "manager",
+  "agent",
+]);
+
+export const memberStatus = pgEnum("member_status", ["active", "inactive"]);
+
+export const whatsappProvider = pgEnum("whatsapp_provider", [
+  "evolution",
+  "cloud_api",
+  "twilio",
+]);
+
+export const whatsappAccountStatus = pgEnum("whatsapp_account_status", [
+  "connected",
+  "disconnected",
+  "error",
+]);
+
+export const threadStatus = pgEnum("thread_status", [
+  "open",
+  "pending",
+  "resolved",
+  "closed",
+]);
 
 export const whatsappMessageStatus = pgEnum("whatsapp_message_status", [
   "pending",
@@ -19,9 +65,197 @@ export const whatsappMessageStatus = pgEnum("whatsapp_message_status", [
   "error",
 ]);
 
+export const messageContentType = pgEnum("message_content_type", [
+  "text",
+  "image",
+  "audio",
+  "video",
+  "document",
+  "location",
+  "contact",
+  "sticker",
+]);
+
+// ========================================
+// TENANTS & MEMBERS
+// ========================================
+
+export const tenants = pgTable("tenants", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 100 }).notNull().unique(),
+  status: tenantStatus("status").default("active").notNull(),
+  plan: tenantPlan("plan").default("starter").notNull(),
+  maxSeats: integer("max_seats").default(5).notNull(),
+  maxWhatsappAccounts: integer("max_whatsapp_accounts").default(1).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  slugIdx: index("idx_tenants_slug").on(table.slug),
+  statusIdx: index("idx_tenants_status").on(table.status),
+}));
+
+export const tenantMembers = pgTable("tenant_members", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull(), // Supabase Auth ID
+  role: memberRole("role").notNull(),
+  status: memberStatus("status").default("active").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantUserUnique: unique("tenant_members_tenant_user_unique").on(table.tenantId, table.userId),
+  tenantIdx: index("idx_tenant_members_tenant").on(table.tenantId),
+  userIdx: index("idx_tenant_members_user").on(table.userId),
+  roleIdx: index("idx_tenant_members_role").on(table.role),
+}));
+
+// ========================================
+// WHATSAPP ACCOUNTS (Instâncias/Números)
+// ========================================
+
+export const whatsappAccounts = pgTable("whatsapp_accounts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  instanceId: varchar("instance_id", { length: 255 }).notNull(),
+  provider: whatsappProvider("provider").notNull(),
+  phoneNumber: varchar("phone_number", { length: 20 }),
+  displayName: varchar("display_name", { length: 255 }),
+  status: whatsappAccountStatus("status").default("disconnected").notNull(),
+  lastConnectedAt: timestamp("last_connected_at"),
+  webhookUrl: text("webhook_url"),
+  config: jsonb("config"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  providerInstanceUnique: unique("wa_accounts_provider_instance_unique").on(table.provider, table.instanceId),
+  tenantIdx: index("idx_wa_accounts_tenant").on(table.tenantId),
+  statusIdx: index("idx_wa_accounts_status").on(table.status),
+}));
+
+// ========================================
+// THREADS (Conversas)
+// ========================================
+
+export const threads = pgTable("threads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  accountId: uuid("account_id").notNull().references(() => whatsappAccounts.id, { onDelete: "cascade" }),
+  remoteJid: varchar("remote_jid", { length: 255 }).notNull(),
+  contactName: varchar("contact_name", { length: 255 }),
+  contactPhone: varchar("contact_phone", { length: 20 }),
+  isGroup: boolean("is_group").default(false).notNull(),
+
+  // Assignment & Organization
+  assignedTo: uuid("assigned_to").references(() => tenantMembers.id, { onDelete: "set null" }),
+  assignedAt: timestamp("assigned_at"),
+  tags: text("tags").array(),
+  status: threadStatus("status").default("open").notNull(),
+
+  // Metrics
+  unreadCount: integer("unread_count").default(0).notNull(),
+  lastMessageContent: text("last_message_content"),
+  lastMessageAt: timestamp("last_message_at"),
+  firstResponseAt: timestamp("first_response_at"),
+  resolvedAt: timestamp("resolved_at"),
+
+  // Metadata
+  archived: boolean("archived").default(false).notNull(),
+  pictureUrl: text("picture_url"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  accountRemoteUnique: unique("threads_account_remote_unique").on(table.accountId, table.remoteJid),
+  tenantIdx: index("idx_threads_tenant").on(table.tenantId),
+  accountIdx: index("idx_threads_account").on(table.accountId),
+  assignedIdx: index("idx_threads_assigned").on(table.assignedTo),
+  statusIdx: index("idx_threads_status").on(table.status),
+  lastMsgIdx: index("idx_threads_last_msg").on(table.lastMessageAt),
+}));
+
+// ========================================
+// MESSAGES
+// ========================================
+
+export const messages = pgTable("messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  threadId: uuid("thread_id").notNull().references(() => threads.id, { onDelete: "cascade" }),
+
+  // WhatsApp IDs
+  messageId: varchar("message_id", { length: 255 }).notNull().unique(),
+  remoteJid: varchar("remote_jid", { length: 255 }).notNull(),
+
+  // Content
+  fromJid: varchar("from_jid", { length: 255 }).notNull(),
+  toJid: varchar("to_jid", { length: 255 }).notNull(),
+  isFromMe: boolean("is_from_me").default(false).notNull(),
+  contentType: messageContentType("content_type").default("text").notNull(),
+  body: text("body"),
+
+  // Media
+  hasMedia: boolean("has_media").default(false).notNull(),
+  mediaType: varchar("media_type", { length: 100 }),
+  mediaUrl: text("media_url"),
+  mediaSize: integer("media_size"),
+
+  // Status & Metadata
+  status: whatsappMessageStatus("status").default("pending").notNull(),
+  timestamp: timestamp("timestamp").notNull(),
+  contextInfo: jsonb("context_info"),
+
+  // Internal
+  clientMessageId: varchar("client_message_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdx: index("idx_messages_tenant").on(table.tenantId),
+  threadIdx: index("idx_messages_thread").on(table.threadId, table.timestamp),
+  messageIdIdx: index("idx_messages_message_id").on(table.messageId),
+  timestampIdx: index("idx_messages_timestamp").on(table.timestamp),
+}));
+
+// ========================================
+// WEBHOOK EVENTS (Audit & Raw)
+// ========================================
+
+export const webhookEventsRaw = pgTable("webhook_events_raw", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  correlationId: uuid("correlation_id").notNull(),
+  eventType: varchar("event_type", { length: 120 }).notNull(),
+  provider: whatsappProvider("provider").notNull(),
+  payload: jsonb("payload").notNull(),
+  processed: boolean("processed").default(false).notNull(),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdx: index("idx_webhook_raw_tenant").on(table.tenantId),
+  correlationIdx: index("idx_webhook_raw_correlation").on(table.correlationId),
+  receivedIdx: index("idx_webhook_raw_received").on(table.receivedAt),
+}));
+
+// ========================================
+// AI SUGGESTIONS
+// ========================================
+
+export const aiSuggestions = pgTable("ai_suggestions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  threadId: uuid("thread_id").notNull().references(() => threads.id, { onDelete: "cascade" }),
+  messageId: uuid("message_id").references(() => messages.id, { onDelete: "cascade" }),
+  suggestions: jsonb("suggestions").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  threadIdx: index("idx_ai_suggestions_thread").on(table.threadId),
+}));
+
+// ========================================
+// LEGACY TABLES (manter para compatibilidade)
+// ========================================
+
 export const whatsappSessions = pgTable("whatsapp_sessions", {
   id: serial("id").primaryKey(),
-  userId: uuid("user_id").notNull(), // Supabase Auth ID (UUID)
+  userId: uuid("user_id").notNull(),
   phoneNumber: varchar("phone_number", { length: 20 }),
   isConnected: boolean("is_connected").default(false),
   isReady: boolean("is_ready").default(false),
@@ -93,6 +327,32 @@ export const suggestedResponses = pgTable("suggested_responses", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// ========================================
+// TYPES
+// ========================================
+
+export type Tenant = typeof tenants.$inferSelect;
+export type TenantInsert = typeof tenants.$inferInsert;
+
+export type TenantMember = typeof tenantMembers.$inferSelect;
+export type TenantMemberInsert = typeof tenantMembers.$inferInsert;
+
+export type WhatsAppAccount = typeof whatsappAccounts.$inferSelect;
+export type WhatsAppAccountInsert = typeof whatsappAccounts.$inferInsert;
+
+export type Thread = typeof threads.$inferSelect;
+export type ThreadInsert = typeof threads.$inferInsert;
+
+export type Message = typeof messages.$inferSelect;
+export type MessageInsert = typeof messages.$inferInsert;
+
+export type WebhookEventRaw = typeof webhookEventsRaw.$inferSelect;
+export type WebhookEventRawInsert = typeof webhookEventsRaw.$inferInsert;
+
+export type AiSuggestion = typeof aiSuggestions.$inferSelect;
+export type AiSuggestionInsert = typeof aiSuggestions.$inferInsert;
+
+// Legacy types
 export type WhatsAppSession = typeof whatsappSessions.$inferSelect;
 export type WhatsAppMessage = typeof whatsappMessages.$inferSelect;
 export type WhatsAppChat = typeof whatsappChats.$inferSelect;

@@ -12,8 +12,12 @@
     },
     "scripts": {
         "dev": "next dev",
+        "dev:api": "tsx watch server.ts",
+        "dev:worker": "tsx watch server/workers/webhook-worker.ts",
         "build": "next build",
         "start": "next start",
+        "start:api": "node server.ts",
+        "start:worker": "node server/workers/webhook-worker.ts",
         "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
         "lint:fix": "eslint . --ext ts,tsx --fix",
         "format": "prettier --write \"app/**/*.{ts,tsx,css}\" \"src/**/*.{ts,tsx,css}\" \"*.{ts,json,mjs}\"",
@@ -76,7 +80,12 @@
         "tailwind-merge": "^2.2.0",
         "tailwindcss-animate": "^1.0.7",
         "winston": "^3.11.0",
-        "zod": "^3.22.4"
+        "zod": "^3.22.4",
+        "bullmq": "^5.1.0",
+        "ioredis": "^5.3.2",
+        "prom-client": "^15.1.0",
+        "express-rate-limit": "^7.1.5",
+        "rate-limit-redis": "^4.2.0"
     },
     "devDependencies": {
         "@playwright/test": "^1.40.1",
@@ -98,7 +107,8 @@
         "prettier": "^3.1.1",
         "tailwindcss": "^3.4.0",
         "typescript": "^5.3.3",
-        "vitest": "^4.0.18"
+        "vitest": "^4.0.18",
+        "tsx": "^4.7.0"
     },
     "overrides": {
         "esbuild": "^0.25.1"
