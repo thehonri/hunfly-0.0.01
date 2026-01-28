@@ -33,6 +33,9 @@ uploads/
 *.tmp
 temp/
 
+# Artifacts (HARs, dumps, etc) - dados sensíveis / grandes
+artifacts/
+
 # Logs
 logs/
 *.log

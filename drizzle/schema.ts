@@ -8,7 +8,16 @@ import {
   jsonb,
   integer,
   uuid,
+  pgEnum,
 } from "drizzle-orm/pg-core";
+
+export const whatsappMessageStatus = pgEnum("whatsapp_message_status", [
+  "pending",
+  "sent",
+  "delivered",
+  "read",
+  "error",
+]);
 
 export const whatsappSessions = pgTable("whatsapp_sessions", {
   id: serial("id").primaryKey(),
@@ -25,11 +34,15 @@ export const whatsappMessages = pgTable("whatsapp_messages", {
   id: serial("id").primaryKey(),
   userId: uuid("user_id").notNull(),
   messageId: varchar("message_id", { length: 255 }).unique(),
+  remoteJid: varchar("remote_jid", { length: 255 }),
+  pushName: varchar("push_name", { length: 255 }),
   chatId: varchar("chat_id", { length: 255 }).notNull(),
   from: varchar("from", { length: 255 }).notNull(),
   to: varchar("to", { length: 255 }).notNull(),
   body: text("body"),
   timestamp: timestamp("timestamp"),
+  status: whatsappMessageStatus("status").default("pending"),
+  contextInfo: jsonb("context_info"),
   isFromMe: boolean("is_from_me").default(false),
   hasMedia: boolean("has_media").default(false),
   mediaType: varchar("media_type", { length: 50 }),
@@ -44,9 +57,20 @@ export const whatsappChats = pgTable("whatsapp_chats", {
   name: varchar("name", { length: 255 }).notNull(),
   isGroup: boolean("is_group").default(false),
   unreadCount: integer("unread_count").default(0),
+  pictureUrl: text("picture_url"),
+  lastMessageContent: text("last_message_content"),
+  isArchived: boolean("is_archived").default(false),
   lastMessageAt: timestamp("last_message_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const whatsappWebhooksRaw = pgTable("whatsapp_webhooks_raw", {
+  id: serial("id").primaryKey(),
+  userId: uuid("user_id").notNull(),
+  eventType: varchar("event_type", { length: 120 }).notNull(),
+  payload: jsonb("payload").notNull(),
+  receivedAt: timestamp("received_at").defaultNow(),
 });
 
 export const whatsappMedia = pgTable("whatsapp_media", {
@@ -73,4 +97,5 @@ export type WhatsAppSession = typeof whatsappSessions.$inferSelect;
 export type WhatsAppMessage = typeof whatsappMessages.$inferSelect;
 export type WhatsAppChat = typeof whatsappChats.$inferSelect;
 export type WhatsAppMedia = typeof whatsappMedia.$inferSelect;
+export type WhatsAppWebhookRaw = typeof whatsappWebhooksRaw.$inferSelect;
 export type SuggestedResponse = typeof suggestedResponses.$inferSelect;

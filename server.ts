@@ -10,6 +10,8 @@ import { upload } from "./server/uploads";
 import { Logger } from "./server/logger";
 import { errorHandler } from "./server/middleware/error";
 import { whatsappManager } from "./server/whatsapp";
+import { createWebhookRouter } from "./server/routes/webhooks";
+import { whatsappService } from "./server/services/whatsappService";
 
 const app = express();
 
@@ -181,7 +183,7 @@ app.post(
 );
 
 /** =========================
- *  WhatsApp (Via Manager)
+ *  WhatsApp (Via Manager) - legado
  *  ========================= */
 
 // Inicializa no boot
@@ -274,6 +276,55 @@ app.post(
   }
 );
 
+/** =========================
+ *  WhatsApp Evolution (não-oficial)
+ *  ========================= */
+
+app.post("/api/inbox/send_message", requireAuth, async (req: any, res, next) => {
+  try {
+    const { instanceId, remoteJid, message, quotedMessageId } = req.body || {};
+    const result = await whatsappService.sendMessage({
+      instanceId,
+      remoteJid,
+      message,
+      quotedMessageId,
+    });
+    res.json({ ok: true, result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/inbox/send_typing", requireAuth, async (req: any, res, next) => {
+  try {
+    const { instanceId, remoteJid } = req.body || {};
+    const result = await whatsappService.sendTyping({ instanceId, remoteJid });
+    res.json({ ok: true, result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/inbox/sync_history", requireAuth, async (req: any, res, next) => {
+  try {
+    const { instanceId, remoteJid, limit } = req.body || {};
+    const result = await whatsappService.syncHistory({ instanceId, remoteJid, limit });
+    res.json({ ok: true, result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/api/inbox/get_conversations", requireAuth, async (req: any, res, next) => {
+  try {
+    const { instanceId, limit } = req.body || {};
+    const result = await whatsappService.getConversations({ instanceId, limit });
+    res.json({ ok: true, result });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Upload de áudio de reuniões
 app.post(
   "/api/meetings/:meetingId/audio",
@@ -323,6 +374,17 @@ const server = app.listen(PORT, () => {
  * - limita tamanho por mensagem
  */
 const wss = new WebSocketServer({ server, path: "/ws/live" });
+
+const broadcast = (payload: unknown) => {
+  const data = JSON.stringify(payload);
+  wss.clients.forEach((client: any) => {
+    if (client.readyState === 1) {
+      client.send(data);
+    }
+  });
+};
+
+app.use("/api/webhooks", createWebhookRouter(broadcast));
 
 type ConnState = {
   msgCount: number;
