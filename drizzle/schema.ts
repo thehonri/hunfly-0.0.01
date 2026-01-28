@@ -117,6 +117,7 @@ export const tenantMembers = pgTable("tenant_members", {
 export const whatsappAccounts = pgTable("whatsapp_accounts", {
   id: uuid("id").primaryKey().defaultRandom(),
   tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  ownerMemberId: uuid("owner_member_id").notNull().references(() => tenantMembers.id, { onDelete: "cascade" }),
   instanceId: varchar("instance_id", { length: 255 }).notNull(),
   provider: whatsappProvider("provider").notNull(),
   phoneNumber: varchar("phone_number", { length: 20 }),
@@ -129,6 +130,7 @@ export const whatsappAccounts = pgTable("whatsapp_accounts", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   providerInstanceUnique: unique("wa_accounts_provider_instance_unique").on(table.provider, table.instanceId),
+  ownerUnique: unique("wa_accounts_owner_unique").on(table.ownerMemberId),
   tenantIdx: index("idx_wa_accounts_tenant").on(table.tenantId),
   statusIdx: index("idx_wa_accounts_status").on(table.status),
 }));
@@ -183,7 +185,7 @@ export const messages = pgTable("messages", {
   threadId: uuid("thread_id").notNull().references(() => threads.id, { onDelete: "cascade" }),
 
   // WhatsApp IDs
-  messageId: varchar("message_id", { length: 255 }).notNull().unique(),
+  messageId: varchar("message_id", { length: 255 }).notNull(),
   remoteJid: varchar("remote_jid", { length: 255 }).notNull(),
 
   // Content
@@ -212,6 +214,7 @@ export const messages = pgTable("messages", {
   tenantIdx: index("idx_messages_tenant").on(table.tenantId),
   threadIdx: index("idx_messages_thread").on(table.threadId, table.timestamp),
   messageIdIdx: index("idx_messages_message_id").on(table.messageId),
+  messageThreadUnique: unique("messages_message_thread_unique").on(table.threadId, table.messageId),
   timestampIdx: index("idx_messages_timestamp").on(table.timestamp),
 }));
 
@@ -243,10 +246,77 @@ export const aiSuggestions = pgTable("ai_suggestions", {
   tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
   threadId: uuid("thread_id").notNull().references(() => threads.id, { onDelete: "cascade" }),
   messageId: uuid("message_id").references(() => messages.id, { onDelete: "cascade" }),
-  suggestions: jsonb("suggestions").notNull(),
+  agentId: uuid("agent_id"),
+  suggestedText: text("suggested_text").notNull(),
+  reasoningSummary: jsonb("reasoning_summary").notNull(),
+  goalProgress: integer("goal_progress").default(0).notNull(),
+  goalText: text("goal_text"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   threadIdx: index("idx_ai_suggestions_thread").on(table.threadId),
+}));
+
+// ========================================
+// COPILOT: AGENTS + KNOWLEDGE BASE
+// ========================================
+
+export const agents = pgTable("agents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  ownerMemberId: uuid("owner_member_id").notNull().references(() => tenantMembers.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 120 }).notNull(),
+  avatarUrl: text("avatar_url"),
+  promptBase: text("prompt_base"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  ownerIdx: index("idx_agents_owner").on(table.ownerMemberId),
+  tenantIdx: index("idx_agents_tenant").on(table.tenantId),
+}));
+
+export const knowledgeItemType = pgEnum("knowledge_item_type", [
+  "text",
+  "url",
+  "pdf",
+]);
+
+export const companyKnowledgeItems = pgTable("company_knowledge_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }).notNull(),
+  type: knowledgeItemType("type").notNull(),
+  content: text("content").notNull(),
+  createdByMemberId: uuid("created_by_member_id").notNull().references(() => tenantMembers.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdx: index("idx_company_knowledge_tenant").on(table.tenantId),
+}));
+
+export const sellerKnowledgeItems = pgTable("seller_knowledge_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  ownerMemberId: uuid("owner_member_id").notNull().references(() => tenantMembers.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }).notNull(),
+  type: knowledgeItemType("type").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  ownerIdx: index("idx_seller_knowledge_owner").on(table.ownerMemberId),
+  tenantIdx: index("idx_seller_knowledge_tenant").on(table.tenantId),
+}));
+
+export const conversationGoals = pgTable("conversation_goals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  threadId: uuid("thread_id").notNull().references(() => threads.id, { onDelete: "cascade" }),
+  goalText: text("goal_text").notNull(),
+  progress: integer("progress").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  threadIdx: index("idx_conversation_goals_thread").on(table.threadId),
 }));
 
 // ========================================
@@ -351,6 +421,18 @@ export type WebhookEventRawInsert = typeof webhookEventsRaw.$inferInsert;
 
 export type AiSuggestion = typeof aiSuggestions.$inferSelect;
 export type AiSuggestionInsert = typeof aiSuggestions.$inferInsert;
+
+export type Agent = typeof agents.$inferSelect;
+export type AgentInsert = typeof agents.$inferInsert;
+
+export type CompanyKnowledgeItem = typeof companyKnowledgeItems.$inferSelect;
+export type CompanyKnowledgeItemInsert = typeof companyKnowledgeItems.$inferInsert;
+
+export type SellerKnowledgeItem = typeof sellerKnowledgeItems.$inferSelect;
+export type SellerKnowledgeItemInsert = typeof sellerKnowledgeItems.$inferInsert;
+
+export type ConversationGoal = typeof conversationGoals.$inferSelect;
+export type ConversationGoalInsert = typeof conversationGoals.$inferInsert;
 
 // Legacy types
 export type WhatsAppSession = typeof whatsappSessions.$inferSelect;

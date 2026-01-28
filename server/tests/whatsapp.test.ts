@@ -49,7 +49,7 @@ describe('WhatsAppManager', () => {
         expect(status.qr).toBe('');
     });
 
-    it('deve emitir evento qr_code quando o client do whatsapp receber qr', async () => {
+    it('deve manter legado desabilitado e não expor client', async () => {
         const qrSpy = vi.fn();
         whatsapp.on('qr_code', qrSpy);
 
@@ -57,14 +57,10 @@ describe('WhatsAppManager', () => {
 
         // @ts-ignore
         const mockClient = whatsapp.client;
-        expect(mockClient).toBeDefined();
+        expect(mockClient).toBeUndefined();
 
-        const fakeQr = 'fake-qr-code-final-test';
-        // @ts-ignore
-        mockClient.emit('qr', fakeQr);
-
-        expect(qrSpy).toHaveBeenCalledWith(fakeQr);
+        expect(qrSpy).not.toHaveBeenCalled();
         const status = whatsapp.getStatus();
-        expect(status.qr).toBe(fakeQr);
+        expect(status.qr).toBe('');
     });
 });

@@ -5,13 +5,15 @@
  */
 
 import winston from 'winston';
+import type { TransformableInfo } from 'logform';
 
 /**
  * Redact PII from log messages
  */
-const redactPII = winston.format((info) => {
-  // Create a copy to avoid mutating original
-  const sanitized = { ...info };
+const redactPII = winston.format((info: TransformableInfo) => {
+  // Winston expects us to return TransformableInfo (or false to drop the log).
+  // We keep the original reference and mutate only safe fields.
+  const sanitized = info as TransformableInfo & Record<string, unknown>;
 
   // Redact phone numbers (keep last 4 digits)
   if (sanitized.phone) {
@@ -46,8 +48,10 @@ const redactPII = winston.format((info) => {
   }
 
   // Redact authorization header
-  if (sanitized.headers?.authorization) {
-    sanitized.headers.authorization = '[REDACTED]';
+  const headers = sanitized.headers as Record<string, unknown> | undefined;
+  if (headers && typeof headers.authorization === 'string') {
+    headers.authorization = '[REDACTED]';
+    sanitized.headers = headers;
   }
 
   return sanitized;
@@ -73,7 +77,7 @@ const consoleFormat = winston.format.combine(
   winston.format.printf((info) => {
     const { timestamp, level, message, correlationId, ...meta } = info;
     const metaStr = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
-    const corrId = correlationId ? `[${correlationId.slice(0, 8)}]` : '';
+    const corrId = typeof correlationId === 'string' ? `[${correlationId.slice(0, 8)}]` : '';
     return `${timestamp} ${level} ${corrId} ${message} ${metaStr}`;
   })
 );
@@ -113,7 +117,7 @@ export const Logger = winston.createLogger({
 export function logWithContext(
   level: 'debug' | 'info' | 'warn' | 'error',
   message: string,
-  context: Record<string, any>
+  context: Record<string, unknown>
 ) {
   Logger.log(level, message, context);
 }

@@ -36,7 +36,7 @@ async function processMessagesUpsert(
   jobData: WebhookJobData,
   messagesData: any[]
 ): Promise<void> {
-  const { tenantId, correlationId } = jobData;
+  const { tenantId, correlationId, accountId: accountIdFromJob } = jobData;
 
   if (!tenantId) {
     Logger.warn('Cannot process message without tenantId', { correlationId });
@@ -68,10 +68,13 @@ async function processMessagesUpsert(
       });
 
       if (!thread) {
-        // Get account ID (assuming first account for now - should match instanceId)
-        const account = await db.query.whatsappAccounts.findFirst({
-          where: eq(whatsappAccounts.tenantId, tenantId),
-        });
+        const account = accountIdFromJob
+          ? await db.query.whatsappAccounts.findFirst({
+              where: eq(whatsappAccounts.id, accountIdFromJob),
+            })
+          : await db.query.whatsappAccounts.findFirst({
+              where: eq(whatsappAccounts.tenantId, tenantId),
+            });
 
         if (!account) {
           Logger.error('No WhatsApp account found for tenant', { tenantId, correlationId });
@@ -112,7 +115,7 @@ async function processMessagesUpsert(
         hasMedia: hasMedia(msg.message),
         mediaType: detectMediaType(msg.message),
       }).onConflictDoUpdate({
-        target: messages.messageId,
+        target: [messages.threadId, messages.messageId],
         set: {
           status: normalizeStatus(msg.status),
           updatedAt: new Date(),
@@ -134,7 +137,7 @@ async function processMessagesUpsert(
 
       // Publish to realtime channel
       await redisPub.publish(
-        `tenant:${tenantId}:inbox`,
+        `account:${thread.accountId}:inbox`,
         JSON.stringify({
           type: 'message.new',
           data: {
@@ -267,6 +270,8 @@ async function processWebhookJob(job: Job<WebhookJobData>): Promise<void> {
   // Process based on event type
   if (eventType === 'MESSAGES_UPSERT' && payload.data) {
     await processMessagesUpsert(job.data, payload.data);
+  } else if (eventType === 'MESSAGES_RECEIVED' && payload.messages) {
+    await processMessagesUpsert(job.data, payload.messages);
   } else if (eventType === 'MESSAGES_UPDATE') {
     // Handle message status updates
     Logger.debug('Message update event', { correlationId, eventType });

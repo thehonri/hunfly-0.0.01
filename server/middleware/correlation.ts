@@ -4,12 +4,10 @@
  * Adds a unique correlation ID to each request for distributed tracing
  */
 
-import { Request, Response, NextFunction } from 'express';
+import type { Request, RequestHandler } from 'express';
 import { randomUUID } from 'crypto';
 
-export interface CorrelatedRequest extends Request {
-  correlationId: string;
-}
+export type CorrelatedRequest = Request & { correlationId: string };
 
 /**
  * Middleware: Add correlation ID to request
@@ -18,18 +16,12 @@ export interface CorrelatedRequest extends Request {
  * - Generates new UUID if not present
  * - Adds correlation ID to response headers
  */
-export function addCorrelationId(
-  req: CorrelatedRequest,
-  res: Response,
-  next: NextFunction
-) {
-  // Use existing correlation ID or generate new one
-  const correlationId = (req.headers['x-correlation-id'] as string) || randomUUID();
+export const addCorrelationId: RequestHandler = (req, res, next) => {
+  const headerValue = req.header('x-correlation-id');
+  const correlationId = headerValue && headerValue.trim().length > 0 ? headerValue : randomUUID();
 
-  req.correlationId = correlationId;
-
-  // Add to response headers for client tracking
+  (req as CorrelatedRequest).correlationId = correlationId;
   res.setHeader('X-Correlation-Id', correlationId);
 
   next();
-}
+};

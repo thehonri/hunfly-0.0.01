@@ -43,18 +43,20 @@ export function requirePermission(permission: Permission) {
     try {
       // Ensure user is authenticated
       if (!req.user || !req.user.id) {
-        return res.status(401).json({
+        res.status(401).json({
           error: 'Authentication required',
         });
+        return;
       }
 
       // Extract tenantId from request
       const tenantId = extractTenantId(req);
 
       if (!tenantId) {
-        return res.status(400).json({
+        res.status(400).json({
           error: 'tenantId is required',
         });
+        return;
       }
 
       // Get user's membership in this tenant
@@ -68,9 +70,10 @@ export function requirePermission(permission: Permission) {
           permission,
         });
 
-        return res.status(403).json({
+        res.status(403).json({
           error: 'Not a member of this tenant',
         });
+        return;
       }
 
       // Check if user's role has the required permission
@@ -85,11 +88,12 @@ export function requirePermission(permission: Permission) {
           permission,
         });
 
-        return res.status(403).json({
+        res.status(403).json({
           error: `Permission denied: ${permission}`,
           requiredPermission: permission,
           userRole: membership.role,
         });
+        return;
       }
 
       // Attach membership to request for downstream handlers
@@ -110,6 +114,7 @@ export function requirePermission(permission: Permission) {
         error: error instanceof Error ? error.message : String(error),
       });
       next(error);
+      return;
     }
   };
 }
@@ -123,25 +128,29 @@ export function requireTenantMembership() {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
       if (!req.user || !req.user.id) {
-        return res.status(401).json({ error: 'Authentication required' });
+        res.status(401).json({ error: 'Authentication required' });
+        return;
       }
 
       const tenantId = extractTenantId(req);
 
       if (!tenantId) {
-        return res.status(400).json({ error: 'tenantId is required' });
+        res.status(400).json({ error: 'tenantId is required' });
+        return;
       }
 
       const membership = await getTenantMembership(req.user.id, tenantId);
 
       if (!membership) {
-        return res.status(403).json({ error: 'Not a member of this tenant' });
+        res.status(403).json({ error: 'Not a member of this tenant' });
+        return;
       }
 
       req.membership = membership;
       next();
     } catch (error) {
       next(error);
+      return;
     }
   };
 }

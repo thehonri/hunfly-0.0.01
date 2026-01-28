@@ -14,6 +14,12 @@ import { randomUUID } from 'crypto';
 import { verifyEvolutionSignature, verifyCloudAPISignature } from '../lib/webhook-security';
 import { enqueueWebhookEvent } from '../queues/webhook-queue';
 import { Logger } from '../lib/logger';
+import {
+  getAccountFromInstanceId,
+  getAccountFromPhoneNumberId,
+  getTenantIdFromInstanceId,
+  getTenantIdFromPhoneNumberId,
+} from '../lib/tenant-resolver';
 
 const router = Router();
 
@@ -37,7 +43,8 @@ router.post('/whatsapp/evolution', async (req: Request, res: Response) => {
 
     if (!secret) {
       Logger.error('EVOLUTION_WEBHOOK_SECRET not configured', { correlationId });
-      return res.status(500).json({ error: 'Webhook secret not configured' });
+      res.status(500).json({ error: 'Webhook secret not configured' });
+      return;
     }
 
     // Get raw body for signature verification
@@ -48,7 +55,8 @@ router.post('/whatsapp/evolution', async (req: Request, res: Response) => {
         correlationId,
         ip: req.ip,
       });
-      return res.status(401).json({ error: 'Invalid signature' });
+      res.status(401).json({ error: 'Invalid signature' });
+      return;
     }
 
     // Parse and validate payload
@@ -59,26 +67,26 @@ router.post('/whatsapp/evolution', async (req: Request, res: Response) => {
         correlationId,
         errors: parsed.error.flatten(),
       });
-      return res.status(400).json({
+      res.status(400).json({
         error: 'Invalid payload',
         details: parsed.error.flatten(),
       });
+      return;
     }
 
     const { event, instanceId, data } = parsed.data;
 
-    // Extract tenantId from instanceId (you might have a mapping in DB)
-    // For now, we'll need to query the database or use a convention
-    // Placeholder: const tenantId = await getTenantIdFromInstanceId(instanceId);
-    const tenantId = null; // TODO: Implement tenant resolution
+    // Extract tenantId + accountId from instanceId
+    const accountResolution = instanceId ? await getAccountFromInstanceId(instanceId) : null;
+    const tenantId = accountResolution?.tenantId || (instanceId ? await getTenantIdFromInstanceId(instanceId) : null);
 
-    // Enqueue for async processing
     const jobId = await enqueueWebhookEvent({
       correlationId,
       tenantId,
+      accountId: accountResolution?.accountId,
       provider: 'evolution',
       eventType: event,
-      payload: { event, instanceId, data },
+      payload: { event, instanceId, data, accountId: accountResolution?.accountId },
       receivedAt: new Date(),
     });
 
@@ -95,12 +103,14 @@ router.post('/whatsapp/evolution', async (req: Request, res: Response) => {
       correlationId,
       jobId,
     });
+    return;
   } catch (error) {
     Logger.error('Error processing Evolution webhook', {
       correlationId,
       error: error instanceof Error ? error.message : String(error),
     });
     res.status(500).json({ error: 'Internal server error' });
+    return;
   }
 });
 
@@ -132,15 +142,18 @@ router.get('/whatsapp/cloud-api', (req: Request, res: Response) => {
   const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
 
   if (!verifyToken) {
-    return res.status(500).json({ error: 'WHATSAPP_VERIFY_TOKEN not configured' });
+    res.status(500).json({ error: 'WHATSAPP_VERIFY_TOKEN not configured' });
+    return;
   }
 
   if (mode === 'subscribe' && token === verifyToken && challenge) {
     Logger.info('Cloud API webhook verified');
-    return res.send(challenge);
+    res.send(challenge);
+    return;
   }
 
   res.status(403).json({ error: 'Invalid verification' });
+  return;
 });
 
 // Webhook endpoint
@@ -154,7 +167,8 @@ router.post('/whatsapp/cloud-api', async (req: Request, res: Response) => {
 
     if (!appSecret) {
       Logger.error('WHATSAPP_APP_SECRET not configured', { correlationId });
-      return res.status(500).json({ error: 'App secret not configured' });
+      res.status(500).json({ error: 'App secret not configured' });
+      return;
     }
 
     const rawBody = JSON.stringify(req.body);
@@ -164,7 +178,8 @@ router.post('/whatsapp/cloud-api', async (req: Request, res: Response) => {
         correlationId,
         ip: req.ip,
       });
-      return res.status(401).json({ error: 'Invalid signature' });
+      res.status(401).json({ error: 'Invalid signature' });
+      return;
     }
 
     // Parse and validate payload
@@ -175,29 +190,46 @@ router.post('/whatsapp/cloud-api', async (req: Request, res: Response) => {
         correlationId,
         errors: parsed.error.flatten(),
       });
-      return res.status(400).json({
+      res.status(400).json({
         error: 'Invalid payload',
         details: parsed.error.flatten(),
       });
+      return;
     }
 
     // Extract messages and statuses
     const messages = parsed.data.entry.flatMap((entry) =>
-      entry.changes.flatMap((change) => (change.value as any).messages ?? [])
+      entry.changes.flatMap((change) => {
+        const value = change.value as Record<string, unknown>;
+        const msgs = value.messages;
+        return Array.isArray(msgs) ? msgs : [];
+      })
     );
 
     const statuses = parsed.data.entry.flatMap((entry) =>
-      entry.changes.flatMap((change) => (change.value as any).statuses ?? [])
+      entry.changes.flatMap((change) => {
+        const value = change.value as Record<string, unknown>;
+        const st = value.statuses;
+        return Array.isArray(st) ? st : [];
+      })
     );
+
+    // Extract phone number ID for tenant resolution
+    const firstValue = parsed.data.entry[0]?.changes[0]?.value as Record<string, unknown> | undefined;
+    const metadata = firstValue?.metadata as Record<string, unknown> | undefined;
+    const phoneNumberId = typeof metadata?.phone_number_id === 'string' ? metadata.phone_number_id : undefined;
+    const accountResolution = phoneNumberId ? await getAccountFromPhoneNumberId(phoneNumberId) : null;
+    const tenantId = accountResolution?.tenantId || (phoneNumberId ? await getTenantIdFromPhoneNumberId(phoneNumberId) : null);
 
     // Enqueue events
     if (messages.length > 0) {
       await enqueueWebhookEvent({
         correlationId,
-        tenantId: null, // TODO: Extract from phone number ID
+        tenantId,
+        accountId: accountResolution?.accountId,
         provider: 'cloud_api',
         eventType: 'MESSAGES_RECEIVED',
-        payload: { messages },
+        payload: { messages, accountId: accountResolution?.accountId },
         receivedAt: new Date(),
       });
     }
@@ -205,10 +237,11 @@ router.post('/whatsapp/cloud-api', async (req: Request, res: Response) => {
     if (statuses.length > 0) {
       await enqueueWebhookEvent({
         correlationId,
-        tenantId: null,
+        tenantId,
+        accountId: accountResolution?.accountId,
         provider: 'cloud_api',
         eventType: 'MESSAGE_STATUS_UPDATE',
-        payload: { statuses },
+        payload: { statuses, accountId: accountResolution?.accountId },
         receivedAt: new Date(),
       });
     }
@@ -220,12 +253,14 @@ router.post('/whatsapp/cloud-api', async (req: Request, res: Response) => {
     });
 
     res.json({ ok: true, correlationId });
+    return;
   } catch (error) {
     Logger.error('Error processing Cloud API webhook', {
       correlationId,
       error: error instanceof Error ? error.message : String(error),
     });
     res.status(500).json({ error: 'Internal server error' });
+    return;
   }
 });
 

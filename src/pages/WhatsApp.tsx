@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
-import { 
-  MessageSquare, 
+import {
+  MessageSquare,
   Search,
   Phone,
   MoreVertical,
@@ -8,13 +8,15 @@ import {
   Paperclip,
   Mic,
   CheckCheck,
-  Clock,
   Brain,
   Sparkles,
   FileText,
   ArrowRight,
   User,
-  Building2
+  Building2,
+  Bot,
+  Target,
+  Wand2
 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,10 +82,29 @@ const aiInsights = [
   { type: "next", title: "Próximos Passos", text: "Confirmar horário da reunião, preparar apresentação de cases similares, enviar agenda." },
 ];
 
+const agents = [
+  { id: "agent-1", name: "Hero", avatar: "H" },
+  { id: "agent-2", name: "Closer", avatar: "C" },
+  { id: "agent-3", name: "Consultivo", avatar: "C" },
+];
+
 const WhatsApp = () => {
   const [selectedConversation, setSelectedConversation] = useState(conversations[0]);
   const [messageInput, setMessageInput] = useState("");
   const [showAiPanel, setShowAiPanel] = useState(true);
+  const [selectedAgent, setSelectedAgent] = useState(agents[0]);
+  const [useCompanyBase, setUseCompanyBase] = useState(true);
+  const [usePersonalBase, setUsePersonalBase] = useState(true);
+  const [aiSuggestion, setAiSuggestion] = useState(
+    "Bom dia! Vi sua mensagem e posso te ajudar a avançar com segurança. Quer que eu te mostre o próximo passo para fechar o produto X?"
+  );
+  const [goalProgress, setGoalProgress] = useState(10);
+  const [goalText, setGoalText] = useState("Vender produto X");
+  const [reasoningSummary, setReasoningSummary] = useState([
+    "Cliente informal e responde bem a CTA simples",
+    "Momento adequado para proposta objetiva",
+    "Reforçar benefício principal do produto X",
+  ]);
 
   return (
     <DashboardLayout>
@@ -214,7 +235,7 @@ const WhatsApp = () => {
             </div>
 
             {/* Input */}
-            <div className="p-4 border-t border-border">
+            <div className="p-4 border-t border-border space-y-2">
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="icon">
                   <Paperclip className="w-4 h-4" />
@@ -232,6 +253,22 @@ const WhatsApp = () => {
                   <Send className="w-4 h-4" />
                 </Button>
               </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    <Bot className="w-3 h-3" />
+                    Agente: {selectedAgent.name}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Target className="w-3 h-3" />
+                    Objetivo: {goalText}
+                  </span>
+                </div>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Wand2 className="w-4 h-4" />
+                  Gerar
+                </Button>
+              </div>
             </div>
           </Card>
         </motion.div>
@@ -247,20 +284,91 @@ const WhatsApp = () => {
             {/* AI Header */}
             <Card variant="gradient" className="border-primary/30">
               <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-                    <Sparkles className="w-5 h-5 text-primary-foreground" />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-primary-foreground font-semibold">
+                      {selectedAgent.avatar}
+                    </div>
+                    <div>
+                      <p className="font-display font-semibold">{selectedAgent.name}</p>
+                      <p className="text-xs text-muted-foreground">Copiloto em ação</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-display font-semibold">Análise IA</p>
-                    <p className="text-xs text-muted-foreground">Insights automáticos</p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant={useCompanyBase ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setUseCompanyBase(!useCompanyBase)}
+                    >
+                      Base da Empresa
+                    </Button>
+                    <Button
+                      variant={usePersonalBase ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setUsePersonalBase(!usePersonalBase)}
+                    >
+                      Materiais Pessoais
+                    </Button>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Insights */}
+            {/* Suggestion */}
+            <Card variant="glass" className="border-primary/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  Resposta Recomendada
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-foreground leading-relaxed">{aiSuggestion}</p>
+                <div className="flex items-center gap-2">
+                  <Button size="sm">Copiar</Button>
+                  <Button size="sm" variant="outline">Editar</Button>
+                  <Button size="sm" variant="gradient">Enviar</Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Goal Progress */}
+            <Card variant="glass" className="border-primary/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Target className="w-4 h-4 text-primary" />
+                  Objetivo
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-sm font-medium">{goalText}</p>
+                <div className="w-full h-2 rounded-full bg-secondary">
+                  <div className="h-2 rounded-full bg-primary" style={{ width: `${goalProgress}%` }} />
+                </div>
+                <p className="text-xs text-muted-foreground">{goalProgress}% de progresso</p>
+              </CardContent>
+            </Card>
+
+            {/* Reasoning */}
             <Card variant="glass" className="flex-1 overflow-hidden">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-primary" />
+                  Estratégia resumida
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {reasoningSummary.map((item, index) => (
+                  <div key={index} className="text-sm text-muted-foreground flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary mt-2" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Insights */}
+            <Card variant="glass" className="overflow-hidden">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <Brain className="w-4 h-4 text-primary" />
@@ -295,7 +403,7 @@ const WhatsApp = () => {
                 Gerar Resumo para CRM
               </Button>
               <Button variant="outline" size="sm" className="w-full gap-2 justify-start">
-                <Clock className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4" />
                 Criar Follow-up
               </Button>
             </div>

@@ -7,10 +7,15 @@ import { WebSocketServer } from "ws";
 import { createClient } from "@supabase/supabase-js";
 import { jwtVerify, SignJWT } from "jose";
 import { upload } from "./server/uploads";
-import { Logger } from "./server/logger";
+import { Logger } from "./server/lib/logger";
+import { addCorrelationId } from "./server/middleware/correlation";
+import { metricsMiddleware } from "./server/middleware/metrics";
+import { getMetrics } from "./server/lib/metrics";
 import { errorHandler } from "./server/middleware/error";
 import { whatsappManager } from "./server/whatsapp";
-import { createWebhookRouter } from "./server/routes/webhooks";
+import { webhooksRouter } from "./server/routes/webhooks-new";
+import { inboxRouter } from "./server/routes/inbox";
+import { copilotRouter } from "./server/routes/copilot";
 import { whatsappService } from "./server/services/whatsappService";
 
 const app = express();
@@ -83,9 +88,18 @@ app.use(
   })
 );
 
-// Logger Middleware de Requisições
-app.use((req, res, next) => {
-  Logger.http(`${req.method} ${req.url} - ${req.ip}`);
+// Correlation ID (para tracing distribuído)
+app.use(addCorrelationId);
+
+// Prometheus metrics
+app.use(metricsMiddleware);
+
+// Logger Middleware de Requisições (com correlation ID)
+app.use((req: any, _res, next) => {
+  Logger.info(`${req.method} ${req.url}`, {
+    ip: req.ip,
+    correlationId: req.correlationId,
+  });
   next();
 });
 
@@ -135,6 +149,13 @@ app.get("/api/me", requireAuth, (req: any, res) => {
   res.json({ id: req.user.id, email: req.user.email });
 });
 
+// Prometheus metrics endpoint
+app.get("/api/metrics", async (_req, res) => {
+  const metrics = await getMetrics();
+  res.set("Content-Type", "text/plain");
+  res.send(metrics);
+});
+
 /** =========================
  *  Live Session (WS token curto)
  *  - Nota: wsUrl deve usar o host atual (não hardcode localhost)
@@ -176,8 +197,10 @@ app.post(
         wsUrl: `${wsProto}://${host}/ws/live?token=${token}`,
         token,
       });
+      return;
     } catch (err) {
       next(err);
+      return;
     }
   }
 );
@@ -186,10 +209,15 @@ app.post(
  *  WhatsApp (Via Manager) - legado
  *  ========================= */
 
-// Inicializa no boot
-whatsappManager.initialize().catch((e) => {
-  Logger.error(`[Server] Failed to init WhatsApp: ${e}`);
-});
+// Inicializa no boot (LEGADO whatsapp-web.js)
+// Em produção, deve ficar OFF por padrão.
+if (process.env.LEGACY_WWEBJS_ENABLED === 'true') {
+  whatsappManager.initialize().catch((e) => {
+    Logger.error(`[Server] Failed to init WhatsApp: ${e}`);
+  });
+} else {
+  Logger.info('[Server] Legacy WhatsApp (whatsapp-web.js) disabled');
+}
 
 app.get("/api/whatsapp/status", requireAuth, (_req, res) => {
   const status = whatsappManager.getStatus();
@@ -225,8 +253,10 @@ app.post("/api/whatsapp/init", requireAuth, async (_req, res, next) => {
       });
     }
     res.json({ ok: true, connected: false, initializing: true });
+    return;
   } catch (e: any) {
     next(e);
+    return;
   }
 });
 
@@ -240,8 +270,10 @@ app.post("/api/whatsapp/logout", requireAuth, async (_req, res, next) => {
     });
 
     res.json({ ok: true });
+    return;
   } catch (e: any) {
     next(e);
+    return;
   }
 });
 
@@ -270,8 +302,10 @@ app.post(
       const result = await whatsappManager.sendMessage(chatId, message);
 
       res.json({ ok: true, id: result?.id?.id || null });
+      return;
     } catch (e: any) {
       next(e);
+      return;
     }
   }
 );
@@ -290,8 +324,10 @@ app.post("/api/inbox/send_message", requireAuth, async (req: any, res, next) => 
       quotedMessageId,
     });
     res.json({ ok: true, result });
+    return;
   } catch (err) {
     next(err);
+    return;
   }
 });
 
@@ -300,8 +336,10 @@ app.post("/api/inbox/send_typing", requireAuth, async (req: any, res, next) => {
     const { instanceId, remoteJid } = req.body || {};
     const result = await whatsappService.sendTyping({ instanceId, remoteJid });
     res.json({ ok: true, result });
+    return;
   } catch (err) {
     next(err);
+    return;
   }
 });
 
@@ -310,8 +348,10 @@ app.post("/api/inbox/sync_history", requireAuth, async (req: any, res, next) => 
     const { instanceId, remoteJid, limit } = req.body || {};
     const result = await whatsappService.syncHistory({ instanceId, remoteJid, limit });
     res.json({ ok: true, result });
+    return;
   } catch (err) {
     next(err);
+    return;
   }
 });
 
@@ -320,8 +360,10 @@ app.post("/api/inbox/get_conversations", requireAuth, async (req: any, res, next
     const { instanceId, limit } = req.body || {};
     const result = await whatsappService.getConversations({ instanceId, limit });
     res.json({ ok: true, result });
+    return;
   } catch (err) {
     next(err);
+    return;
   }
 });
 
@@ -351,9 +393,19 @@ app.post(
       });
     } catch (e: any) {
       next(e);
+      return;
     }
   }
 );
+
+// Webhooks seguros com queue (novo)
+app.use("/api/webhooks", webhooksRouter);
+
+// Inbox (threads/messages + SSE)
+app.use("/api/inbox", requireAuth, inboxRouter);
+
+// Copiloto (agentes + base + sugestão)
+app.use("/api/copilot", requireAuth, copilotRouter);
 
 // Centralized Error Handler (Always last)
 app.use(errorHandler);
@@ -375,16 +427,8 @@ const server = app.listen(PORT, () => {
  */
 const wss = new WebSocketServer({ server, path: "/ws/live" });
 
-const broadcast = (payload: unknown) => {
-  const data = JSON.stringify(payload);
-  wss.clients.forEach((client: any) => {
-    if (client.readyState === 1) {
-      client.send(data);
-    }
-  });
-};
-
-app.use("/api/webhooks", createWebhookRouter(broadcast));
+// Webhook legado para compatibilidade (deprecado - remover após migração)
+// app.use("/api/webhooks/legacy", createWebhookRouter(broadcast));
 
 type ConnState = {
   msgCount: number;

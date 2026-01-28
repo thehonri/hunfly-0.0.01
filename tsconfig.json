@@ -1,13 +1,5 @@
 {
-  "files": [],
-  "references": [
-    {
-      "path": "./tsconfig.app.json"
-    },
-    {
-      "path": "./tsconfig.node.json"
-    }
-  ],
+  "files": ["next-env.d.ts"],
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
@@ -59,12 +51,20 @@
     ]
   },
   "include": [
-    "next-env.d.ts",
     ".next/types/**/*.ts",
     "**/*.ts",
     "**/*.tsx"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "**/*.d.ts",
+    "server.bak.ts",
+    "server/whatsapp.ts",
+    "extension",
+    "src",
+    "vite.config.ts",
+    ".next",
+    "dist",
+    "build"
   ]
 }

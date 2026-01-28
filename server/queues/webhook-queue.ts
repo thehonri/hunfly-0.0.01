@@ -14,6 +14,7 @@ import { Logger } from '../lib/logger';
 export interface WebhookJobData {
   correlationId: string;
   tenantId: string | null;
+  accountId?: string | null;
   provider: 'evolution' | 'cloud_api';
   eventType: string;
   payload: any;
