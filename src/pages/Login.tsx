@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 
 const Login = () => {
@@ -14,7 +14,7 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const navigate = useNavigate();
+  const router = useRouter();
   const { toast } = useToast();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -37,7 +37,7 @@ const Login = () => {
         description: "Bem-vindo de volta à plataforma.",
       });
 
-      navigate("/dashboard");
+      router.push("/dashboard");
     } catch (e: any) {
       const msg = e?.message || "Verifique e-mail e senha.";
       setErr(msg);

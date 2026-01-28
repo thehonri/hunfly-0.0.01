@@ -16,6 +16,7 @@ import { whatsappManager } from "./server/whatsapp";
 import { webhooksRouter } from "./server/routes/webhooks-new";
 import { inboxRouter } from "./server/routes/inbox";
 import { copilotRouter } from "./server/routes/copilot";
+import whatsappConnectRouter from "./server/routes/whatsapp-connect.js";
 import { whatsappService } from "./server/services/whatsappService";
 
 const app = express();
@@ -406,6 +407,9 @@ app.use("/api/inbox", requireAuth, inboxRouter);
 
 // Copiloto (agentes + base + sugestão)
 app.use("/api/copilot", requireAuth, copilotRouter);
+
+// WhatsApp Connection (QR Code + Status)
+app.use("/api/whatsapp", whatsappConnectRouter);
 
 // Centralized Error Handler (Always last)
 app.use(errorHandler);

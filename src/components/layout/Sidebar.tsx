@@ -1,4 +1,7 @@
-import { Link, useLocation } from "react-router-dom";
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard,
@@ -18,19 +21,19 @@ const menuItems = [
   { icon: Video, label: "Sala de Reunião", path: "/meeting-room" },
   { icon: PlayCircle, label: "Reuniões Gravadas", path: "/recordings" },
   { icon: Trophy, label: "Ranking", path: "/ranking" },
-  { icon: MessageSquare, label: "WhatsApp", path: "/whatsapp-connect" },
+  { icon: MessageSquare, label: "WhatsApp", path: "/whatsapp" },
   { icon: Users, label: "Time", path: "/team" },
   { icon: Settings, label: "Configurações", path: "/settings" },
 ];
 
 const Sidebar = () => {
-  const location = useLocation();
+  const pathname = usePathname();
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-sidebar border-r border-sidebar-border flex flex-col z-50">
       {/* Logo */}
       <div className="p-6 border-b border-sidebar-border">
-        <Link to="/dashboard" className="flex items-center gap-3">
+        <Link href="/dashboard" className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center glow">
             <Zap className="w-6 h-6 text-primary-foreground" />
           </div>
@@ -42,11 +45,11 @@ const Sidebar = () => {
       <nav className="flex-1 p-4 overflow-y-auto">
         <ul className="space-y-1">
           {menuItems.map((item) => {
-            const isActive = location.pathname === item.path;
+            const isActive = pathname === item.path;
             return (
               <li key={item.path}>
                 <Link
-                  to={item.path}
+                  href={item.path}
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 group relative",
                     isActive

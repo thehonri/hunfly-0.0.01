@@ -1,5 +1,5 @@
-import Index from "@/pages/Index";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <Index />;
+  redirect("/login");
 }

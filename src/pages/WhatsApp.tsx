@@ -23,58 +23,37 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useInboxSSE } from "@/hooks/useInboxSSE";
+import { useToast } from "@/hooks/use-toast";
 
-const conversations = [
-  {
-    id: 1,
-    name: "Maria Santos",
-    company: "TechCorp Solutions",
-    lastMessage: "Perfeito, vamos agendar para terça então!",
-    time: "10:32",
-    unread: 2,
-    avatar: "MS",
-    status: "online"
-  },
-  {
-    id: 2,
-    name: "Pedro Lima",
-    company: "CloudBase Inc",
-    lastMessage: "Você: Enviei a proposta por email",
-    time: "09:15",
-    unread: 0,
-    avatar: "PL",
-    status: "offline"
-  },
-  {
-    id: 3,
-    name: "Ana Costa",
-    company: "DataFlow",
-    lastMessage: "Qual o próximo passo?",
-    time: "Ontem",
-    unread: 1,
-    avatar: "AC",
-    status: "online"
-  },
-  {
-    id: 4,
-    name: "Carlos Mendes",
-    company: "StartupXYZ",
-    lastMessage: "Você: Combinado!",
-    time: "Ontem",
-    unread: 0,
-    avatar: "CM",
-    status: "offline"
-  },
-];
+// Helper functions
+function formatTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
 
-const messages = [
-  { id: 1, text: "Olá! Tudo bem? Vi que vocês trabalham com soluções em cloud.", sender: "them", time: "10:15" },
-  { id: 2, text: "Olá Maria! Tudo ótimo, e você? Sim, somos especialistas em migração e gestão de cloud.", sender: "me", time: "10:18" },
-  { id: 3, text: "Que bom! Estamos buscando um parceiro para migrar nossa infraestrutura. Vocês fazem isso?", sender: "them", time: "10:22" },
-  { id: 4, text: "Com certeza! Podemos agendar uma call para entender melhor suas necessidades?", sender: "me", time: "10:25" },
-  { id: 5, text: "Perfeito, vamos agendar para terça então!", sender: "them", time: "10:32" },
-];
+  if (diff < 24 * 60 * 60 * 1000) {
+    return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+  if (diff < 7 * 24 * 60 * 60 * 1000) {
+    return diff < 2 * 24 * 60 * 60 * 1000 ? 'Ontem' : date.toLocaleDateString('pt-BR', { weekday: 'short' });
+  }
+  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
+function getInitials(name: string): string {
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+}
+
+async function apiFetch(endpoint: string) {
+  const token = localStorage.getItem('supabase.auth.token');
+  const response = await fetch(`http://localhost:3001${endpoint}`, {
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+  });
+  if (!response.ok) throw new Error('API Error');
+  return response.json();
+}
 
 const aiInsights = [
   { type: "summary", title: "Resumo da Conversa", text: "Lead interessado em migração de cloud. Demonstrou urgência. Reunião agendada para terça-feira." },
@@ -89,7 +68,28 @@ const agents = [
 ];
 
 const WhatsApp = () => {
-  const [selectedConversation, setSelectedConversation] = useState(conversations[0]);
+  // Estados da API
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  const tenantId = '00000000-0000-0000-0000-000000000001';
+  const accountId = '00000000-0000-0000-0000-000000000003';
+
+  const { lastEvent, isConnected } = useInboxSSE({
+    tenantId,
+    accountId,
+    enabled: true,
+  });
+
+  // Estados de conexão WhatsApp
+  const [whatsappConnected, setWhatsappConnected] = useState(false);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'disconnected' | 'connecting' | 'connected'>('checking');
+
+  // Estados da UI
+  const [selectedConversation, setSelectedConversation] = useState<any>(null);
   const [messageInput, setMessageInput] = useState("");
   const [showAiPanel, setShowAiPanel] = useState(true);
   const [selectedAgent, setSelectedAgent] = useState(agents[0]);
@@ -106,6 +106,223 @@ const WhatsApp = () => {
     "Reforçar benefício principal do produto X",
   ]);
 
+  // Verificar status da conexão do WhatsApp
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        // Verifica no banco se tem account conectado
+        const response = await apiFetch(`/api/whatsapp/status?accountId=${accountId}`);
+
+        if (response.status === 'connected') {
+          setWhatsappConnected(true);
+          setConnectionStatus('connected');
+        } else {
+          setWhatsappConnected(false);
+          setConnectionStatus('disconnected');
+        }
+      } catch (error) {
+        // Se der erro, assume desconectado
+        setWhatsappConnected(false);
+        setConnectionStatus('disconnected');
+      }
+    };
+
+    checkConnection();
+
+    // Poll a cada 5 segundos quando estiver conectando
+    const interval = setInterval(() => {
+      if (connectionStatus === 'connecting') {
+        checkConnection();
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [accountId, connectionStatus]);
+
+  // Gerar QR Code quando desconectado
+  useEffect(() => {
+    if (connectionStatus === 'disconnected' && !qrCode) {
+      const generateQR = async () => {
+        try {
+          setConnectionStatus('connecting');
+          const response = await apiFetch(`/api/whatsapp/connect?accountId=${accountId}`);
+          setQrCode(response.qrCode);
+        } catch (error) {
+          toast({
+            title: 'Erro',
+            description: 'Falha ao gerar QR Code',
+            variant: 'destructive',
+          });
+        }
+      };
+
+      generateQR();
+    }
+  }, [connectionStatus, qrCode, accountId]);
+
+  // Carregar threads (só se conectado)
+  useEffect(() => {
+    if (!whatsappConnected) return;
+
+    const fetchThreads = async () => {
+      try {
+        setLoading(true);
+        const data = await apiFetch(`/api/inbox/threads?tenantId=${tenantId}&accountId=${accountId}&limit=50`);
+
+        const formatted = data.threads.map((t: any) => ({
+          id: t.id,
+          name: t.contactName,
+          company: t.remoteJid || "WhatsApp",
+          lastMessage: t.lastMessageContent,
+          time: formatTime(t.lastMessageAt),
+          unread: t.unreadCount || 0,
+          avatar: getInitials(t.contactName),
+          status: "online",
+          remoteJid: t.remoteJid,
+        }));
+
+        setConversations(formatted);
+        if (formatted.length > 0) {
+          setSelectedConversation(formatted[0]);
+        }
+      } catch (error) {
+        toast({
+          title: 'Erro',
+          description: 'Falha ao carregar conversas',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchThreads();
+  }, [tenantId, accountId]);
+
+  // Carregar mensagens
+  useEffect(() => {
+    if (!selectedConversation) return;
+
+    const fetchMessages = async () => {
+      try {
+        const data = await apiFetch(`/api/inbox/messages?tenantId=${tenantId}&threadId=${selectedConversation.id}&limit=50`);
+
+        setMessages(data.messages.map((m: any) => ({
+          id: m.id,
+          text: m.body,
+          sender: m.isFromMe ? 'me' : 'them',
+          time: formatTime(m.timestamp),
+        })));
+      } catch (error) {
+        toast({
+          title: 'Erro',
+          description: 'Falha ao carregar mensagens',
+          variant: 'destructive',
+        });
+      }
+    };
+
+    fetchMessages();
+  }, [selectedConversation, tenantId]);
+
+  // SSE - Tempo real
+  useEffect(() => {
+    if (!lastEvent) return;
+
+    if (lastEvent.type === 'message.new') {
+      const { threadId, messageId, body, timestamp, isFromMe } = lastEvent.data;
+
+      setConversations(prev =>
+        prev.map(conv => {
+          if (conv.id === threadId) {
+            return {
+              ...conv,
+              lastMessage: body,
+              time: formatTime(timestamp),
+              unread: isFromMe ? 0 : (conv.unread || 0) + 1,
+            };
+          }
+          return conv;
+        })
+      );
+
+      if (selectedConversation?.id === threadId) {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: messageId,
+            text: body,
+            sender: isFromMe ? 'me' : 'them',
+            time: formatTime(timestamp),
+          },
+        ]);
+      }
+    }
+  }, [lastEvent, selectedConversation]);
+
+  // Tela de conexão do WhatsApp
+  if (!whatsappConnected) {
+    return (
+      <DashboardLayout>
+        <div className="h-[calc(100vh-7rem)] flex items-center justify-center">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="max-w-2xl w-full"
+          >
+            <Card variant="glass" className="p-8">
+              <div className="text-center space-y-6">
+                {/* Header */}
+                <div className="space-y-2">
+                  <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
+                    <MessageSquare className="w-8 h-8 text-white" />
+                  </div>
+                  <h2 className="text-2xl font-display font-bold">Conectar WhatsApp</h2>
+                  <p className="text-muted-foreground">
+                    Escaneie o QR Code com seu celular para começar
+                  </p>
+                </div>
+
+                {/* QR Code */}
+                {connectionStatus === 'connecting' && qrCode ? (
+                  <div className="space-y-4">
+                    <div className="bg-white p-6 rounded-xl inline-block mx-auto">
+                      <img src={qrCode} alt="QR Code" className="w-64 h-64" />
+                    </div>
+                    <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                      Aguardando escaneamento...
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-12">
+                    <div className="w-16 h-16 mx-auto border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                    <p className="mt-4 text-sm text-muted-foreground">Gerando QR Code...</p>
+                  </div>
+                )}
+
+                {/* Instruções */}
+                <div className="bg-secondary/50 rounded-lg p-6 text-left space-y-3">
+                  <p className="font-medium flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-primary" />
+                    Como conectar:
+                  </p>
+                  <ol className="space-y-2 text-sm text-muted-foreground ml-6">
+                    <li>1. Abra o WhatsApp no seu celular</li>
+                    <li>2. Toque em <strong>Menu</strong> ou <strong>Configurações</strong></li>
+                    <li>3. Toque em <strong>Aparelhos conectados</strong></li>
+                    <li>4. Toque em <strong>Conectar um aparelho</strong></li>
+                    <li>5. Aponte seu celular para esta tela para escanear o código</li>
+                  </ol>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="h-[calc(100vh-7rem)] flex gap-4">
@@ -118,7 +335,14 @@ const WhatsApp = () => {
           <Card variant="glass" className="flex-1 flex flex-col overflow-hidden">
             <CardHeader className="pb-3 border-b border-border">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Conversas</CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-lg">Conversas</CardTitle>
+                  {isConnected && (
+                    <Badge variant="success" className="text-xs">
+                      <span className="mr-1">•</span> Conectado
+                    </Badge>
+                  )}
+                </div>
                 <Badge variant="secondary">{conversations.length}</Badge>
               </div>
               <div className="relative mt-2">
@@ -132,7 +356,7 @@ const WhatsApp = () => {
                   key={conv.id}
                   onClick={() => setSelectedConversation(conv)}
                   className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${
-                    selectedConversation.id === conv.id
+                    selectedConversation?.id === conv.id
                       ? "bg-primary/10 border border-primary/30"
                       : "hover:bg-secondary"
                   }`}
@@ -172,6 +396,12 @@ const WhatsApp = () => {
           className="flex-1 flex flex-col"
         >
           <Card variant="glass" className="flex-1 flex flex-col overflow-hidden">
+            {!selectedConversation ? (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                {loading ? "Carregando..." : "Selecione uma conversa"}
+              </div>
+            ) : (
+              <>
             {/* Chat Header */}
             <div className="p-4 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -271,6 +501,8 @@ const WhatsApp = () => {
               </div>
             </div>
           </Card>
+          </>
+            )}
         </motion.div>
 
         {/* AI Insights Panel */}
