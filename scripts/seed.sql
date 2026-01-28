@@ -6,7 +6,7 @@
 -- 2. Tenant member (admin)
 -- 3. WhatsApp account
 --
--- IMPORTANTE: Substitua 'SEU_USER_ID_AQUI' pelo user_id do Supabase
+-- IMPORTANTE: Substitua '27c8f131-a3c6-42b9-809a-95c0fe5a5b98' pelo user_id do Supabase
 -- Obter em: Supabase Dashboard > Authentication > Users
 
 -- ============================================
@@ -26,7 +26,7 @@ VALUES (
 -- ============================================
 -- 2. CRIAR TENANT MEMBER (ADMIN)
 -- ============================================
--- ⚠️ ATENÇÃO: SUBSTITUA 'SEU_USER_ID_AQUI' ABAIXO!
+-- ⚠️ ATENÇÃO: SUBSTITUA '27c8f131-a3c6-42b9-809a-95c0fe5a5b98' ABAIXO!
 -- O user_id deve vir do Supabase Auth (UUID do usuário autenticado)
 -- Obter em: Supabase Dashboard > Authentication > Users
 
@@ -41,7 +41,7 @@ INSERT INTO tenant_members (
 ) VALUES (
   '00000000-0000-0000-0000-000000000002',
   '00000000-0000-0000-0000-000000000001',
-  'SEU_USER_ID_AQUI',  -- ⚠️ SUBSTITUIR PELO UUID DO SUPABASE!
+  '27c8f131-a3c6-42b9-809a-95c0fe5a5b98',
   'tenant_admin',
   'active',
   NOW(),
