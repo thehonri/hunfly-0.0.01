@@ -220,7 +220,8 @@ if (process.env.LEGACY_WWEBJS_ENABLED === 'true') {
   Logger.info('[Server] Legacy WhatsApp (whatsapp-web.js) disabled');
 }
 
-app.get("/api/whatsapp/status", requireAuth, (_req, res) => {
+// LEGADO: whatsapp-web.js endpoints (renomeados para evitar conflito)
+app.get("/api/whatsapp/legacy/status", requireAuth, (_req, res) => {
   const status = whatsappManager.getStatus();
   res.json({
     connected: status.connected,
@@ -228,7 +229,7 @@ app.get("/api/whatsapp/status", requireAuth, (_req, res) => {
   });
 });
 
-app.get("/api/whatsapp/qr", requireAuth, (_req, res) => {
+app.get("/api/whatsapp/legacy/qr", requireAuth, (_req, res) => {
   const status = whatsappManager.getStatus();
 
   if (status.connected) return res.json({ connected: true, qr: null });
@@ -243,7 +244,7 @@ app.get("/api/whatsapp/qr", requireAuth, (_req, res) => {
   return res.json({ connected: false, qr: status.qr });
 });
 
-app.post("/api/whatsapp/init", requireAuth, async (_req, res, next) => {
+app.post("/api/whatsapp/legacy/init", requireAuth, async (_req, res, next) => {
   try {
     const status = whatsappManager.getStatus();
     if (status.connected) return res.json({ ok: true, connected: true });
@@ -261,7 +262,7 @@ app.post("/api/whatsapp/init", requireAuth, async (_req, res, next) => {
   }
 });
 
-app.post("/api/whatsapp/logout", requireAuth, async (_req, res, next) => {
+app.post("/api/whatsapp/legacy/logout", requireAuth, async (_req, res, next) => {
   try {
     await whatsappManager.destroy();
 
@@ -287,7 +288,7 @@ const whatsappSendLimiter = rateLimit({
 });
 
 app.post(
-  "/api/whatsapp/send",
+  "/api/whatsapp/legacy/send",
   requireAuth,
   whatsappSendLimiter,
   async (req, res, next) => {

@@ -7,6 +7,7 @@ import { requirePermission, type AuthenticatedRequest } from "../middleware/rbac
 import { canOnlyAccessAssigned } from "../lib/permissions";
 import { Logger } from "../lib/logger";
 import { redisSub } from "../lib/redis";
+import { EvolutionProvider } from "../providers/evolution-provider";
 
 const router = Router();
 
@@ -127,6 +128,45 @@ router.get(
     });
 
     return;
+  }
+);
+
+const sendMessageSchema = z.object({
+  instanceId: z.string(),
+  remoteJid: z.string(),
+  message: z.string(),
+  quotedMessageId: z.string().optional(),
+});
+
+router.post(
+  "/send_message",
+  requirePermission("inbox.write"),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const parsed = sendMessageSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "invalid_params", details: parsed.error.flatten() });
+    }
+
+    const { instanceId, remoteJid, message, quotedMessageId } = parsed.data;
+
+    try {
+      const provider = new EvolutionProvider();
+      const result = await provider.sendMessage({
+        instanceId,
+        remoteJid,
+        message,
+        quotedMessageId,
+      });
+
+      return res.json({ ok: true, messageId: result.messageId, status: result.status });
+    } catch (error) {
+      Logger.error("Failed to send message", {
+        instanceId,
+        remoteJid,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return res.status(500).json({ error: "Failed to send message" });
+    }
   }
 );
 

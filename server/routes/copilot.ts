@@ -8,9 +8,11 @@ import {
   aiSuggestions,
   conversationGoals,
   threads,
+  messages,
 } from "../../drizzle/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { requirePermission, type AuthenticatedRequest } from "../middleware/rbac";
+import { generateSuggestion, generateMeetingSuggestion } from "../lib/ai-provider";
 
 const router = Router();
 
@@ -180,15 +182,53 @@ router.post(
       where: and(eq(conversationGoals.threadId, threadId), eq(conversationGoals.tenantId, tenantId)),
     });
 
-    const suggestedText = "Bom dia! Vi sua mensagem e posso te ajudar a avançar com segurança. Quer que eu te mostre o próximo passo para fechar o produto X?";
-    const reasoningSummary = [
-      "Cliente informal e responde bem a CTA simples",
-      "Momento adequado para proposta objetiva",
-      "Reforçar benefício principal do produto X",
-    ];
+    // Buscar últimas 10 mensagens da conversa para contexto
+    const recentMessages = await db.query.messages.findMany({
+      where: and(eq(messages.threadId, threadId), eq(messages.tenantId, tenantId)),
+      orderBy: desc(messages.timestamp),
+      limit: 10,
+    });
 
+    // Montar contexto da conversa
+    const conversationContext = recentMessages
+      .reverse()
+      .map((msg) => `${msg.isFromMe ? 'Vendedor' : 'Cliente'}: ${msg.body}`)
+      .join('\n');
+
+    // Buscar knowledge base
+    let companyKnowledge: string[] = [];
+    let personalKnowledge: string[] = [];
+
+    if (useCompanyBase) {
+      const companyItems = await db.query.companyKnowledgeItems.findMany({
+        where: eq(companyKnowledgeItems.tenantId, tenantId),
+      });
+      companyKnowledge = companyItems.map((item) => `${item.title}: ${item.content}`);
+    }
+
+    if (usePersonalBase && req.membership) {
+      const personalItems = await db.query.sellerKnowledgeItems.findMany({
+        where: and(
+          eq(sellerKnowledgeItems.tenantId, tenantId),
+          eq(sellerKnowledgeItems.ownerMemberId, req.membership.id)
+        ),
+      });
+      personalKnowledge = personalItems.map((item) => `${item.title}: ${item.content}`);
+    }
+
+    // Gerar sugestão com LLM
+    const aiResult = await generateSuggestion({
+      conversationContext,
+      companyKnowledge,
+      personalKnowledge,
+      goal: goal?.goalText ?? 'Vender produto',
+      customerName: thread.contactName ?? 'Cliente',
+    });
+
+    const suggestedText = aiResult.suggestedText;
+    const reasoningSummary = aiResult.reasoningSummary;
     const goalProgress = goal?.progress ?? 10;
-    const goalText = goal?.goalText ?? "Vender produto X";
+    const goalText = goal?.goalText ?? "Vender produto";
 
     const [suggestion] = await db.insert(aiSuggestions).values({
       tenantId,
@@ -206,6 +246,35 @@ router.post(
       useCompanyBase,
       usePersonalBase,
     });
+  }
+);
+
+/**
+ * Endpoint para extensão de reuniões (Google Meet, Teams)
+ * Gera sugestão rápida baseada em transcrição em tempo real
+ */
+const meetingSuggestionSchema = z.object({
+  transcription: z.string().min(10),
+  question: z.string().min(5),
+});
+
+router.post(
+  "/meeting-suggestion",
+  async (req: AuthenticatedRequest, res: Response) => {
+    const parsed = meetingSuggestionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "invalid_params", details: parsed.error.flatten() });
+    }
+
+    const { transcription, question } = parsed.data;
+
+    try {
+      const suggestion = await generateMeetingSuggestion(transcription, question);
+      return res.json({ ok: true, suggestion });
+    } catch (error) {
+      console.error('Error generating meeting suggestion:', error);
+      return res.status(500).json({ error: "Failed to generate suggestion" });
+    }
   }
 );
 
