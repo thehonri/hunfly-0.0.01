@@ -1,5 +1,7 @@
+"use client";
+
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Loader2, QrCode, CheckCircle2, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/lib/supabase";
 
 const WhatsAppConnect = () => {
-  const navigate = useNavigate();
+  const router = useRouter();
   const [qrCode, setQrCode] = useState<string>("");
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -27,7 +29,7 @@ const WhatsAppConnect = () => {
           return;
         }
 
-        const res = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3001"}/api/whatsapp/qr`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/whatsapp/qr`, {
           headers: {
             "Authorization": `Bearer ${token}`
           }
@@ -43,7 +45,7 @@ const WhatsAppConnect = () => {
           setIsConnected(true);
           setIsLoading(false);
           // Redireciona após 2 segundos se conectado
-          setTimeout(() => navigate("/whatsapp"), 2000);
+          setTimeout(() => router.push("/whatsapp"), 2000);
         } else if (data.qr) {
           setQrCode(data.qr);
           setIsLoading(false);
@@ -56,7 +58,7 @@ const WhatsAppConnect = () => {
           // Opcional: Tentar inicializar se demorar muito
           if (data.hint) {
             // Força init se backend pedir
-            await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:3001"}/api/whatsapp/init`, {
+            await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/api/whatsapp/init`, {
               method: "POST",
               headers: { "Authorization": `Bearer ${token}` }
             });
@@ -74,7 +76,7 @@ const WhatsAppConnect = () => {
     intervalId = setInterval(checkStatus, 2000);
 
     return () => clearInterval(intervalId);
-  }, [navigate]);
+  }, [router]);
 
   const handleDisconnect = async () => {
     // Apenas limpa estado local, desconexão real seria via endpoint de logout

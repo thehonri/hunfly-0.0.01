@@ -192,7 +192,7 @@ router.post(
     // Montar contexto da conversa
     const conversationContext = recentMessages
       .reverse()
-      .map((msg: { isFromMe: boolean; body: string }) => `${msg.isFromMe ? 'Vendedor' : 'Cliente'}: ${msg.body}`)
+      .map((msg) => `${msg.isFromMe ? 'Vendedor' : 'Cliente'}: ${msg.body || ''}`)
       .join('\n');
 
     // Buscar knowledge base
