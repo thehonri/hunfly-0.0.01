@@ -104,17 +104,41 @@ export const Overlay: React.FC = () => {
         return Math.round((userChars / totalChars) * 100);
     };
 
-    // --- Lógica de IA Separada ---
-    const handleAiSubmit = () => {
+    // --- Lógica de IA - Conectada ao Backend Real ---
+    const handleAiSubmit = async () => {
         if (!aiQuery.trim()) return;
         setIsAiLoading(true);
-        setAiResponse(null); // Limpa resposta anterior
+        setAiResponse(null);
 
-        // Simulação de delay da API
-        setTimeout(() => {
-            setAiResponse(`Para contornar essa objeção sobre "${aiQuery}", foque no valor a longo prazo e mostre o case da Empresa X.`);
+        try {
+            // Montar transcrição a partir das mensagens capturadas
+            const transcription = messages
+                .map(m => `${m.sender}: ${m.text}`)
+                .join('\n');
+
+            // Chamar API real do backend Hunfly (endpoint público)
+            const response = await fetch('http://localhost:3001/api/extension/meeting-suggestion', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    transcription: transcription || 'Reunião em andamento...',
+                    question: aiQuery
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.ok && data.suggestion) {
+                setAiResponse(data.suggestion);
+            } else {
+                setAiResponse('Erro ao gerar sugestão. Verifique se o backend está rodando.');
+            }
+        } catch (error) {
+            console.error('[Hunfly AI] Error:', error);
+            setAiResponse('Erro de conexão. Verifique se o backend está rodando na porta 3001.');
+        } finally {
             setIsAiLoading(false);
-        }, 1500);
+        }
     };
 
     // --- Lógica de Arrastar (Header) ---

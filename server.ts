@@ -70,6 +70,12 @@ app.use(
     origin: (origin, cb) => {
       // Permite requests sem origin (ex: curl, mobile apps, server-to-server)
       if (!origin) return cb(null, true);
+      // Permite extensões Chrome (chrome-extension://...)
+      if (origin.startsWith('chrome-extension://')) return cb(null, true);
+      // Permite Google Meet e Teams (onde a extensão roda)
+      if (origin === 'https://meet.google.com' || origin === 'https://teams.microsoft.com') {
+        return cb(null, true);
+      }
       if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
       return cb(new Error("Not allowed by CORS"), false);
     },
@@ -406,8 +412,30 @@ app.use("/api/webhooks", webhooksRouter);
 // Inbox (threads/messages + SSE)
 app.use("/api/inbox", requireAuth, inboxRouter);
 
-// Copiloto (agentes + base + sugestão)
+// Copiloto (agentes + base + sugestão) - com auth
 app.use("/api/copilot", requireAuth, copilotRouter);
+
+// Endpoint público para extensão de reuniões (sem auth)
+// Usado pela extensão Chrome para sugestões em tempo real
+import { generateMeetingSuggestion } from "./server/lib/ai-provider";
+app.post("/api/extension/meeting-suggestion", async (req, res) => {
+  try {
+    const { transcription, question } = req.body || {};
+
+    if (!transcription || transcription.length < 5) {
+      return res.status(400).json({ error: "transcription is required (min 5 chars)" });
+    }
+    if (!question || question.length < 3) {
+      return res.status(400).json({ error: "question is required (min 3 chars)" });
+    }
+
+    const suggestion = await generateMeetingSuggestion(transcription, question);
+    return res.json({ ok: true, suggestion });
+  } catch (error) {
+    console.error('[Extension AI] Error:', error);
+    return res.status(500).json({ error: "Failed to generate suggestion" });
+  }
+});
 
 // WhatsApp Connection (QR Code + Status)
 app.use("/api/whatsapp", whatsappConnectRouter);

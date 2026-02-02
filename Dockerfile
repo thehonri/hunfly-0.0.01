@@ -41,6 +41,7 @@ RUN npm ci
 # Copy backend source
 COPY server/ ./server/
 COPY drizzle/ ./drizzle/
+COPY src/lib/ ./src/lib/
 
 # Build TypeScript
 RUN npx tsc -p tsconfig.server.json

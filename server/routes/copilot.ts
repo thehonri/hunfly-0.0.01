@@ -192,7 +192,7 @@ router.post(
     // Montar contexto da conversa
     const conversationContext = recentMessages
       .reverse()
-      .map((msg) => `${msg.isFromMe ? 'Vendedor' : 'Cliente'}: ${msg.body}`)
+      .map((msg: { isFromMe: boolean; body: string }) => `${msg.isFromMe ? 'Vendedor' : 'Cliente'}: ${msg.body}`)
       .join('\n');
 
     // Buscar knowledge base
@@ -203,7 +203,7 @@ router.post(
       const companyItems = await db.query.companyKnowledgeItems.findMany({
         where: eq(companyKnowledgeItems.tenantId, tenantId),
       });
-      companyKnowledge = companyItems.map((item) => `${item.title}: ${item.content}`);
+      companyKnowledge = companyItems.map((item: { title: string; content: string }) => `${item.title}: ${item.content}`);
     }
 
     if (usePersonalBase && req.membership) {
@@ -213,7 +213,7 @@ router.post(
           eq(sellerKnowledgeItems.ownerMemberId, req.membership.id)
         ),
       });
-      personalKnowledge = personalItems.map((item) => `${item.title}: ${item.content}`);
+      personalKnowledge = personalItems.map((item: { title: string; content: string }) => `${item.title}: ${item.content}`);
     }
 
     // Gerar sugestão com LLM

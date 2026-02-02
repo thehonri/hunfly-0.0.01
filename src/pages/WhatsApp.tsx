@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Card } from "@/components/ui/card";
-import { MessageSquare, Phone } from "lucide-react";
+import { MessageSquare, Phone, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import { useInboxSSE } from "@/hooks/useInboxSSE";
 
@@ -208,6 +208,8 @@ const WhatsApp = () => {
   const [selectedConversation, setSelectedConversation] = useState<any>(null);
   const [messageInput, setMessageInput] = useState('');
   const [loading, setLoading] = useState(true);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const tenantId = '00000000-0000-0000-0000-000000000001'; // TODO: obter do contexto de autenticação
@@ -383,6 +385,42 @@ const WhatsApp = () => {
     }
   };
 
+  // Gerar sugestão IA
+  const handleGenerateAiSuggestion = async () => {
+    if (!selectedConversation || messages.length === 0) return;
+
+    try {
+      setAiLoading(true);
+      setAiSuggestion(null);
+
+      // Montar transcrição das últimas mensagens
+      const transcription = messages.slice(-10).map(m =>
+        `${m.sender === 'me' ? 'Vendedor' : 'Cliente'}: ${m.text}`
+      ).join('\n');
+
+      const response = await fetch(`${API_URL}/api/extension/meeting-suggestion`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcription,
+          question: 'Sugira a melhor resposta para continuar essa conversa de vendas'
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.suggestion) {
+          setAiSuggestion(data.suggestion);
+          setMessageInput(data.suggestion);
+        }
+      }
+    } catch (error) {
+      console.error('Error generating AI suggestion:', error);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="h-[calc(100vh-4rem)] flex">
@@ -414,9 +452,8 @@ const WhatsApp = () => {
                 <button
                   key={conv.id}
                   onClick={() => setSelectedConversation(conv)}
-                  className={`w-full p-4 border-b hover:bg-accent transition-colors text-left ${
-                    selectedConversation?.id === conv.id ? 'bg-accent' : ''
-                  }`}
+                  className={`w-full p-4 border-b hover:bg-accent transition-colors text-left ${selectedConversation?.id === conv.id ? 'bg-accent' : ''
+                    }`}
                 >
                   <div className="flex items-start gap-3">
                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -485,19 +522,17 @@ const WhatsApp = () => {
                       className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
-                        className={`max-w-[70%] rounded-lg px-4 py-2 ${
-                          msg.sender === 'me'
+                        className={`max-w-[70%] rounded-lg px-4 py-2 ${msg.sender === 'me'
                             ? 'bg-primary text-primary-foreground'
                             : 'bg-card border'
-                        }`}
+                          }`}
                       >
                         <p className="text-sm whitespace-pre-wrap break-words">{msg.text}</p>
                         <p
-                          className={`text-xs mt-1 ${
-                            msg.sender === 'me'
+                          className={`text-xs mt-1 ${msg.sender === 'me'
                               ? 'text-primary-foreground/70'
                               : 'text-muted-foreground'
-                          }`}
+                            }`}
                         >
                           {msg.time}
                         </p>
@@ -509,8 +544,35 @@ const WhatsApp = () => {
               </div>
 
               {/* Input de Mensagem */}
-              <div className="p-4 border-t bg-card">
+              <div className="p-4 border-t bg-card space-y-2">
+                {/* Sugestão IA */}
+                {aiSuggestion && (
+                  <div className="flex items-start gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                    <Sparkles className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 text-sm text-muted-foreground">
+                      <span className="font-medium text-primary">Sugestão IA:</span> Editável no campo abaixo
+                    </div>
+                    <button
+                      onClick={() => setAiSuggestion(null)}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
                 <div className="flex gap-2">
+                  <button
+                    onClick={handleGenerateAiSuggestion}
+                    disabled={aiLoading || messages.length === 0}
+                    className="px-3 py-2 border rounded-lg hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                    title="Gerar sugestão IA"
+                  >
+                    {aiLoading ? (
+                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 text-primary" />
+                    )}
+                  </button>
                   <input
                     type="text"
                     value={messageInput}
