@@ -40,10 +40,11 @@ RUN npm ci
 
 # Copy backend source
 COPY server/ ./server/
+COPY server.ts ./
 COPY drizzle/ ./drizzle/
 COPY src/lib/ ./src/lib/
 
-# Build TypeScript
+# Build TypeScript to dist-server folder
 RUN npx tsc -p tsconfig.server.json
 
 # ========================================
@@ -70,7 +71,7 @@ RUN npm ci --only=production && \
 # Copy built assets - Next.js outputs to .next folder
 COPY --from=frontend-builder --chown=nodejs:nodejs /app/.next ./.next
 COPY --from=frontend-builder --chown=nodejs:nodejs /app/public ./public
-COPY --from=backend-builder --chown=nodejs:nodejs /app/server ./server
+COPY --from=backend-builder --chown=nodejs:nodejs /app/dist-server ./dist-server
 COPY --chown=nodejs:nodejs drizzle/ ./drizzle/
 
 # Create directories for runtime
@@ -90,5 +91,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Start application
-CMD ["node", "server/main.js"]
+# Start application - server.ts compiles to dist-server/server.js
+CMD ["node", "dist-server/server.js"]
