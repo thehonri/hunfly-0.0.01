@@ -67,8 +67,9 @@ COPY package*.json ./
 RUN npm ci --only=production && \
     npm cache clean --force
 
-# Copy built assets
-COPY --from=frontend-builder --chown=nodejs:nodejs /app/dist ./dist
+# Copy built assets - Next.js outputs to .next folder
+COPY --from=frontend-builder --chown=nodejs:nodejs /app/.next ./.next
+COPY --from=frontend-builder --chown=nodejs:nodejs /app/public ./public
 COPY --from=backend-builder --chown=nodejs:nodejs /app/server ./server
 COPY --chown=nodejs:nodejs drizzle/ ./drizzle/
 
