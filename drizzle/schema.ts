@@ -76,6 +76,18 @@ export const messageContentType = pgEnum("message_content_type", [
   "sticker",
 ]);
 
+export const meetingPlatform = pgEnum("meeting_platform", [
+  "google_meet",
+  "zoom",
+  "teams",
+  "other",
+]);
+
+export const painPointSource = pgEnum("pain_point_source", [
+  "ai_detected",
+  "manual",
+]);
+
 // ========================================
 // TENANTS & MEMBERS
 // ========================================
@@ -267,11 +279,13 @@ export const agents = pgTable("agents", {
   name: varchar("name", { length: 120 }).notNull(),
   avatarUrl: text("avatar_url"),
   promptBase: text("prompt_base"),
+  methodologyId: uuid("methodology_id"), // FK added after salesMethodologies table
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   ownerIdx: index("idx_agents_owner").on(table.ownerMemberId),
   tenantIdx: index("idx_agents_tenant").on(table.tenantId),
+  methodologyIdx: index("idx_agents_methodology").on(table.methodologyId),
 }));
 
 export const knowledgeItemType = pgEnum("knowledge_item_type", [
@@ -317,6 +331,56 @@ export const conversationGoals = pgTable("conversation_goals", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   threadIdx: index("idx_conversation_goals_thread").on(table.threadId),
+}));
+
+// ========================================
+// EXTENSION: SALES METHODOLOGIES & SESSIONS
+// ========================================
+
+export const salesMethodologies = pgTable("sales_methodologies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(),
+  checkpoints: jsonb("checkpoints").notNull(), // [{ id, label, keywords, tip, description }]
+  isDefault: boolean("is_default").default(false).notNull(),
+  isCustom: boolean("is_custom").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdx: index("idx_sales_methodologies_tenant").on(table.tenantId),
+  defaultIdx: index("idx_sales_methodologies_default").on(table.isDefault),
+}));
+
+export const extensionSessions = pgTable("extension_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  memberId: uuid("member_id").notNull().references(() => tenantMembers.id, { onDelete: "cascade" }),
+  agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  methodologyId: uuid("methodology_id").references(() => salesMethodologies.id, { onDelete: "set null" }),
+  meetingPlatform: meetingPlatform("meeting_platform"),
+  transcript: text("transcript"),
+  checkpointsStatus: jsonb("checkpoints_status"), // { "situation": "completed", "problem": "active" }
+  painPoints: jsonb("pain_points"), // [{ pain, quote, severity }]
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  endedAt: timestamp("ended_at"),
+}, (table) => ({
+  tenantIdx: index("idx_extension_sessions_tenant").on(table.tenantId),
+  memberIdx: index("idx_extension_sessions_member").on(table.memberId),
+  agentIdx: index("idx_extension_sessions_agent").on(table.agentId),
+  startedIdx: index("idx_extension_sessions_started").on(table.startedAt),
+}));
+
+export const detectedPainPoints = pgTable("detected_pain_points", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: uuid("session_id").notNull().references(() => extensionSessions.id, { onDelete: "cascade" }),
+  painText: text("pain_text").notNull(),
+  context: text("context"), // trecho do transcript
+  source: painPointSource("source").notNull(),
+  isAddressed: boolean("is_addressed").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  sessionIdx: index("idx_detected_pain_points_session").on(table.sessionId),
+  sourceIdx: index("idx_detected_pain_points_source").on(table.source),
 }));
 
 // ========================================
@@ -433,6 +497,15 @@ export type SellerKnowledgeItemInsert = typeof sellerKnowledgeItems.$inferInsert
 
 export type ConversationGoal = typeof conversationGoals.$inferSelect;
 export type ConversationGoalInsert = typeof conversationGoals.$inferInsert;
+
+export type SalesMethodology = typeof salesMethodologies.$inferSelect;
+export type SalesMethodologyInsert = typeof salesMethodologies.$inferInsert;
+
+export type ExtensionSession = typeof extensionSessions.$inferSelect;
+export type ExtensionSessionInsert = typeof extensionSessions.$inferInsert;
+
+export type DetectedPainPoint = typeof detectedPainPoints.$inferSelect;
+export type DetectedPainPointInsert = typeof detectedPainPoints.$inferInsert;
 
 // Legacy types
 export type WhatsAppSession = typeof whatsappSessions.$inferSelect;

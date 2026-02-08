@@ -178,3 +178,180 @@ Responda de forma objetiva e acionável.`,
     return 'Erro ao gerar sugestão. Tente novamente.';
   }
 }
+
+/**
+ * Detecta dores/pain points do cliente na transcrição
+ */
+interface PainPoint {
+  pain: string;
+  quote: string;
+  severity: 'low' | 'medium' | 'high';
+}
+
+export async function detectPainPoints(transcript: string): Promise<PainPoint[]> {
+  if (!USE_OPENAI || !openai) {
+    console.warn('[AI] OpenAI not configured, returning empty pains');
+    return [];
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `Você é um analista de vendas especializado em identificar dores do cliente.
+
+Analise o transcript e identifique DORES do CLIENTE:
+- Problemas, dificuldades, desafios mencionados
+- Frustrações ou reclamações expressas
+- Restrições de budget/tempo/recursos
+- Obstáculos que impedem o progresso
+
+**Formato de resposta** (JSON):
+{
+  "pains": [
+    {
+      "pain": "Descrição curta da dor (max 50 chars)",
+      "quote": "Trecho exato onde o cliente mencionou",
+      "severity": "low" | "medium" | "high"
+    }
+  ]
+}
+
+Retorne apenas dores do CLIENTE (não do vendedor).
+Se não identificar dores, retorne { "pains": [] }.`,
+        },
+        {
+          role: 'user',
+          content: `Transcript da conversa:\n${transcript}`,
+        },
+      ],
+      temperature: 0.3,
+      max_tokens: 500,
+      response_format: { type: 'json_object' },
+    });
+
+    const response = completion.choices[0]?.message?.content;
+    if (!response) return [];
+
+    const parsed = JSON.parse(response);
+    return parsed.pains || [];
+  } catch (error) {
+    console.error('[AI] Error detecting pains:', error);
+    return [];
+  }
+}
+
+/**
+ * Gera resposta rápida para CTRL+\ (atalho)
+ */
+interface QuickResponseResult {
+  objection: string;
+  suggestion: string;
+}
+
+export async function generateQuickResponse(
+  transcript: string,
+  agentPrompt: string,
+  knowledgeContext: string
+): Promise<QuickResponseResult> {
+  if (!USE_OPENAI || !openai) {
+    return {
+      objection: 'LLM não configurado',
+      suggestion: 'Configure OPENAI_API_KEY no .env',
+    };
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `Você é um assistente de vendas em tempo real.
+
+${agentPrompt ? `**Contexto do agente**:\n${agentPrompt}\n\n` : ''}
+${knowledgeContext ? `**Base de conhecimento**:\n${knowledgeContext}\n\n` : ''}
+
+**Sua tarefa**:
+1. Identificar a ÚLTIMA objeção ou dúvida do cliente no transcript
+2. Sugerir uma resposta RÁPIDA (1-2 frases) para contornar
+
+**Formato de resposta** (JSON):
+{
+  "objection": "O que o cliente disse/perguntou",
+  "suggestion": "Resposta sugerida (max 100 chars)"
+}`,
+        },
+        {
+          role: 'user',
+          content: `Transcript (últimos 30s):\n${transcript}`,
+        },
+      ],
+      temperature: 0.5,
+      max_tokens: 200,
+      response_format: { type: 'json_object' },
+    });
+
+    const response = completion.choices[0]?.message?.content;
+    if (!response) {
+      return { objection: 'Não identificado', suggestion: 'Tente novamente.' };
+    }
+
+    const parsed = JSON.parse(response);
+    return {
+      objection: parsed.objection || 'Não identificado',
+      suggestion: parsed.suggestion || 'Não foi possível gerar sugestão.',
+    };
+  } catch (error) {
+    console.error('[AI] Error in quick response:', error);
+    return { objection: 'Erro', suggestion: 'Erro ao gerar resposta.' };
+  }
+}
+
+/**
+ * Gera dica para completar um checkpoint da metodologia
+ */
+export async function generateCheckpointTip(
+  methodologyName: string,
+  checkpointLabel: string,
+  checkpointDescription: string,
+  transcript: string
+): Promise<string> {
+  if (!USE_OPENAI || !openai) {
+    return `Configure OPENAI_API_KEY para receber dicas personalizadas.`;
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `Você é um coach de vendas especializado em metodologias.
+
+**Metodologia**: ${methodologyName}
+**Checkpoint atual**: ${checkpointLabel}
+**Objetivo do checkpoint**: ${checkpointDescription}
+
+Sua tarefa é dar uma DICA PRÁTICA para o vendedor completar este checkpoint.
+Sugira uma PERGUNTA específica que ele pode fazer ao cliente.
+
+Responda em NO MÁXIMO 2 frases. Seja direto e acionável.`,
+        },
+        {
+          role: 'user',
+          content: `Transcript atual:\n${transcript}\n\nDê uma dica para avançar o checkpoint "${checkpointLabel}".`,
+        },
+      ],
+      temperature: 0.6,
+      max_tokens: 150,
+    });
+
+    return completion.choices[0]?.message?.content || 'Faça perguntas abertas para entender melhor o cliente.';
+  } catch (error) {
+    console.error('[AI] Error generating checkpoint tip:', error);
+    return 'Explore as necessidades do cliente com perguntas abertas.';
+  }
+}

@@ -79,6 +79,87 @@ INSERT INTO whatsapp_accounts (
 ) ON CONFLICT (id) DO NOTHING;
 
 -- ============================================
+-- 4. CRIAR METODOLOGIAS DE VENDAS PADRÃO
+-- ============================================
+-- SPIN Selling
+INSERT INTO sales_methodologies (
+  id,
+  tenant_id,
+  name,
+  checkpoints,
+  is_default,
+  is_custom,
+  created_at,
+  updated_at
+) VALUES (
+  '00000000-0000-0000-0000-000000000010',
+  NULL,  -- NULL = metodologia global (disponível para todos os tenants)
+  'SPIN Selling',
+  '[
+    {"id": "situation", "label": "Situação", "keywords": ["empresa", "cenário", "contexto", "atual"], "tip": "Pergunte sobre o cenário atual do cliente", "description": "Entender a situação atual do cliente"},
+    {"id": "problem", "label": "Problema", "keywords": ["dificuldade", "desafio", "problema", "dor"], "tip": "Identifique as dores e dificuldades", "description": "Descobrir os problemas que o cliente enfrenta"},
+    {"id": "implication", "label": "Implicação", "keywords": ["impacto", "consequência", "prejuízo", "perda"], "tip": "Mostre o impacto do problema no negócio", "description": "Fazer o cliente perceber o custo de não resolver"},
+    {"id": "need_payoff", "label": "Necessidade", "keywords": ["solução", "benefício", "resultado", "ganho"], "tip": "Apresente o valor da solução", "description": "Mostrar como a solução resolve os problemas"}
+  ]'::jsonb,
+  true,
+  false,
+  NOW(),
+  NOW()
+) ON CONFLICT (id) DO NOTHING;
+
+-- GPCT (Goals, Plans, Challenges, Timeline)
+INSERT INTO sales_methodologies (
+  id,
+  tenant_id,
+  name,
+  checkpoints,
+  is_default,
+  is_custom,
+  created_at,
+  updated_at
+) VALUES (
+  '00000000-0000-0000-0000-000000000011',
+  NULL,  -- NULL = metodologia global
+  'GPCT',
+  '[
+    {"id": "goals", "label": "Goals", "keywords": ["objetivo", "meta", "quer", "alcançar"], "tip": "Quais são os objetivos do cliente?", "description": "Entender os objetivos de negócio do cliente"},
+    {"id": "plans", "label": "Plans", "keywords": ["plano", "estratégia", "como", "fazer"], "tip": "Como planeja atingir esses objetivos?", "description": "Entender os planos atuais do cliente"},
+    {"id": "challenges", "label": "Challenges", "keywords": ["desafio", "obstáculo", "barreira", "dificuldade"], "tip": "Quais obstáculos enfrenta no caminho?", "description": "Identificar os desafios que impedem o progresso"},
+    {"id": "timeline", "label": "Timeline", "keywords": ["prazo", "quando", "urgência", "tempo"], "tip": "Qual o prazo para resolver?", "description": "Entender a urgência e timeline do cliente"}
+  ]'::jsonb,
+  true,
+  false,
+  NOW(),
+  NOW()
+) ON CONFLICT (id) DO NOTHING;
+
+-- BANT (Budget, Authority, Need, Timeline)
+INSERT INTO sales_methodologies (
+  id,
+  tenant_id,
+  name,
+  checkpoints,
+  is_default,
+  is_custom,
+  created_at,
+  updated_at
+) VALUES (
+  '00000000-0000-0000-0000-000000000012',
+  NULL,  -- NULL = metodologia global
+  'BANT',
+  '[
+    {"id": "budget", "label": "Budget", "keywords": ["orçamento", "investimento", "valor", "custo"], "tip": "Qual o orçamento disponível?", "description": "Entender a capacidade de investimento"},
+    {"id": "authority", "label": "Authority", "keywords": ["decisor", "aprovação", "quem decide", "responsável"], "tip": "Quem toma a decisão de compra?", "description": "Identificar os decisores no processo"},
+    {"id": "need", "label": "Need", "keywords": ["necessidade", "precisa", "problema", "dor"], "tip": "Qual a necessidade real do cliente?", "description": "Entender a necessidade que motiva a compra"},
+    {"id": "timeline", "label": "Timeline", "keywords": ["prazo", "quando", "urgência", "implementar"], "tip": "Qual o prazo para implementar?", "description": "Entender a urgência do cliente"}
+  ]'::jsonb,
+  true,
+  false,
+  NOW(),
+  NOW()
+) ON CONFLICT (id) DO NOTHING;
+
+-- ============================================
 -- VERIFICAÇÃO
 -- ============================================
 -- Execute este SELECT para validar que os dados foram criados:
