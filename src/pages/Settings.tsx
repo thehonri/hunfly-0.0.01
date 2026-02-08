@@ -2,16 +2,9 @@ import { motion } from "framer-motion";
 import {
     User,
     Bell,
-    MessageSquare,
-    Save,
     BookOpen,
     Link2,
-    Plus,
     Check,
-    X,
-    ExternalLink,
-    Key,
-    RefreshCw,
     Sparkles,
 } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
@@ -23,29 +16,12 @@ import {
     CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
-type AutoJoinRule = {
-    id: string;
-    funnel: string;
-    stage: string;
-    autoJoin: boolean;
-    recordMeeting: boolean;
-    guidanceEnabled: boolean;
-};
+// AutoJoinRule type - will be used when rule management is implemented
 
 const crmIntegrations = [
     { id: "hubspot", name: "HubSpot", connected: false, icon: "🔶" },
@@ -59,42 +35,15 @@ const crmIntegrations = [
 const Settings = () => {
     const { toast } = useToast();
     const [integrations, setIntegrations] = useState(crmIntegrations);
-    const [customApiUrl, setCustomApiUrl] = useState("");
-    const [customApiKey, setCustomApiKey] = useState("");
+    const [_customApiUrl, _setCustomApiUrl] = useState("");
+    const [_customApiKey, _setCustomApiKey] = useState("");
     const [aiEnabled, setAiEnabled] = useState(true);
-    const [showApiConfig, setShowApiConfig] = useState(false);
-    const [selectedCrm, setSelectedCrm] = useState<string | null>(null);
-    const [googleConnected, setGoogleConnected] = useState(false);
-    const [googleAccountEmail, setGoogleAccountEmail] = useState("");
-    const [googleCalendarId, setGoogleCalendarId] = useState("primary");
-    const [autoJoinRules, setAutoJoinRules] = useState<AutoJoinRule[]>([]);
-    const [ruleFunnel, setRuleFunnel] = useState("Funil Principal");
-    const [ruleStage, setRuleStage] = useState("Diagnóstico");
-    const [ruleAutoJoin, setRuleAutoJoin] = useState(true);
-    const [ruleRecordMeeting, setRuleRecordMeeting] = useState(true);
-    const [ruleGuidanceEnabled, setRuleGuidanceEnabled] = useState(true);
+    const [_showApiConfig, setShowApiConfig] = useState(false);
+    const [_selectedCrm, setSelectedCrm] = useState<string | null>(null);
 
     const handleConnect = (crmId: string) => {
         setSelectedCrm(crmId);
         setShowApiConfig(true);
-    };
-
-    const handleSaveIntegration = () => {
-        if (selectedCrm) {
-            setIntegrations((prev) =>
-                prev.map((crm) =>
-                    crm.id === selectedCrm ? { ...crm, connected: true } : crm
-                )
-            );
-            toast({
-                title: "Integração configurada!",
-                description: `${integrations.find((c) => c.id === selectedCrm)?.name} foi conectado com sucesso.`,
-            });
-            setShowApiConfig(false);
-            setSelectedCrm(null);
-            setCustomApiUrl("");
-            setCustomApiKey("");
-        }
     };
 
     const handleDisconnect = (crmId: string) => {
@@ -107,45 +56,8 @@ const Settings = () => {
         });
     };
 
-    const handleConnectGoogle = () => {
-        setGoogleConnected(true);
-        toast({
-            title: "Google Agenda conectado!",
-            description: "Sua agenda foi vinculada para detectar reuniões automaticamente.",
-        });
-    };
-
-    const handleDisconnectGoogle = () => {
-        setGoogleConnected(false);
-        toast({
-            title: "Integração removida",
-            description: "A conexão com o Google Agenda foi desfeita.",
-        });
-    };
-
-    const handleAddRule = () => {
-        const newRule: AutoJoinRule = {
-            id: crypto.randomUUID(),
-            funnel: ruleFunnel,
-            stage: ruleStage,
-            autoJoin: ruleAutoJoin,
-            recordMeeting: ruleRecordMeeting,
-            guidanceEnabled: ruleGuidanceEnabled,
-        };
-        setAutoJoinRules((prev) => [newRule, ...prev]);
-        toast({
-            title: "Regra adicionada",
-            description: `A IA vai acompanhar reuniões do funil ${ruleFunnel} na etapa ${ruleStage}.`,
-        });
-    };
-
-    const handleRemoveRule = (ruleId: string) => {
-        setAutoJoinRules((prev) => prev.filter((rule) => rule.id !== ruleId));
-        toast({
-            title: "Regra removida",
-            description: "A regra de acompanhamento foi excluída.",
-        });
-    };
+    // Note: handleSaveIntegration, handleConnectGoogle, handleDisconnectGoogle, 
+    // handleAddRule, handleRemoveRule will be implemented when their UI sections are active
 
     return (
         <DashboardLayout>
