@@ -1,10 +1,8 @@
 import { getAccessToken } from "./auth";
 import { supabase } from "./supabase";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
-if (!API_BASE_URL) {
-  throw new Error("VITE_API_BASE_URL não definido");
-}
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Note: API_BASE_URL not required at build time
 
 type ApiFetchOptions = RequestInit & {
   timeoutMs?: number;

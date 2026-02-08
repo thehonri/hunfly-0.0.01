@@ -49,7 +49,7 @@ export function useInboxSSE({ tenantId, accountId, enabled = true }: UseInboxSSE
 
         // NOTA: EventSource não suporta headers custom
         // Passamos o token via query param (backend precisa aceitar)
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
         const url = new URL(`${apiUrl}/api/inbox/events`);
         url.searchParams.set('tenantId', tenantId);
         url.searchParams.set('accountId', accountId);
