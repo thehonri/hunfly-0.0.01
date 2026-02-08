@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
-import { 
-  Video, 
-  Mic, 
+import {
+  Video,
+  Mic,
   MicOff,
   VideoOff,
   Phone,
@@ -28,7 +28,7 @@ const aiSuggestions = [
 const MeetingRoom = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(true);
-  const [meetingTime, setMeetingTime] = useState("12:45");
+  const [meetingTime, _setMeetingTime] = useState("12:45");
 
   return (
     <DashboardLayout>
@@ -50,7 +50,7 @@ const MeetingRoom = () => {
                 <p className="text-muted-foreground">TechCorp Solutions</p>
               </div>
             </div>
-            
+
             {/* Self View */}
             <div className="absolute bottom-4 right-4 w-48 h-36 rounded-lg bg-gradient-to-br from-card to-secondary border border-border overflow-hidden">
               <div className="w-full h-full flex items-center justify-center">
@@ -59,7 +59,7 @@ const MeetingRoom = () => {
                 </div>
               </div>
             </div>
-            
+
             {/* Meeting Info */}
             <div className="absolute top-4 left-4 flex items-center gap-4">
               <Badge variant="outline" className="bg-destructive/20 text-destructive border-destructive/50">
@@ -71,7 +71,7 @@ const MeetingRoom = () => {
                 {meetingTime}
               </div>
             </div>
-            
+
             {/* Participants */}
             <div className="absolute top-4 right-4">
               <Button variant="glass" size="sm" className="gap-2">
@@ -80,10 +80,10 @@ const MeetingRoom = () => {
               </Button>
             </div>
           </Card>
-          
+
           {/* Controls */}
           <div className="mt-4 flex items-center justify-center gap-4">
-            <Button 
+            <Button
               variant={isMuted ? "destructive" : "secondary"}
               size="lg"
               className="rounded-full w-14 h-14"
@@ -91,8 +91,8 @@ const MeetingRoom = () => {
             >
               {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
             </Button>
-            
-            <Button 
+
+            <Button
               variant={isVideoOn ? "secondary" : "destructive"}
               size="lg"
               className="rounded-full w-14 h-14"
@@ -100,8 +100,8 @@ const MeetingRoom = () => {
             >
               {isVideoOn ? <Video className="w-6 h-6" /> : <VideoOff className="w-6 h-6" />}
             </Button>
-            
-            <Button 
+
+            <Button
               variant="destructive"
               size="lg"
               className="rounded-full px-8"
@@ -109,8 +109,8 @@ const MeetingRoom = () => {
               <Phone className="w-6 h-6 mr-2 rotate-[135deg]" />
               Encerrar
             </Button>
-            
-            <Button 
+
+            <Button
               variant="secondary"
               size="lg"
               className="rounded-full w-14 h-14"
@@ -119,7 +119,7 @@ const MeetingRoom = () => {
             </Button>
           </div>
         </motion.div>
-        
+
         {/* AI Assistant Panel */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
@@ -141,7 +141,7 @@ const MeetingRoom = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           {/* Live Stats */}
           <Card variant="glass">
             <CardHeader className="pb-3">
@@ -171,7 +171,7 @@ const MeetingRoom = () => {
               </div>
             </CardContent>
           </Card>
-          
+
           {/* AI Suggestions */}
           <Card variant="glass" className="flex-1 overflow-hidden">
             <CardHeader className="pb-3">
@@ -187,11 +187,10 @@ const MeetingRoom = () => {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.2 }}
-                  className={`p-3 rounded-lg ${
-                    suggestion.priority === 'high' 
-                      ? 'bg-warning/10 border border-warning/30' 
+                  className={`p-3 rounded-lg ${suggestion.priority === 'high'
+                      ? 'bg-warning/10 border border-warning/30'
                       : 'bg-secondary/50'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-start gap-2">
                     {suggestion.type === 'question' && (
@@ -209,7 +208,7 @@ const MeetingRoom = () => {
               ))}
             </CardContent>
           </Card>
-          
+
           {/* Quick Actions */}
           <div className="grid grid-cols-2 gap-2">
             <Button variant="outline" size="sm" className="gap-2">
