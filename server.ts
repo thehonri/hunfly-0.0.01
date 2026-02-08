@@ -12,7 +12,6 @@ import { addCorrelationId } from "./server/middleware/correlation";
 import { metricsMiddleware } from "./server/middleware/metrics";
 import { getMetrics } from "./server/lib/metrics";
 import { errorHandler } from "./server/middleware/error";
-import { whatsappManager } from "./server/whatsapp";
 import { webhooksRouter } from "./server/routes/webhooks-new";
 import { inboxRouter } from "./server/routes/inbox";
 import { copilotRouter } from "./server/routes/copilot";
@@ -130,24 +129,6 @@ async function requireAuth(req: any, res: any, next: any) {
 }
 
 /** =========================
- *  Helpers: Validation
- *  ========================= */
-function sanitizePhone(phone: string): string {
-  // Espera DDI+DDD+numero, ex: 5548999999999
-  const digits = String(phone || "").replace(/\D/g, "");
-  // valida tamanho básico (Brasil normalmente 12-13 com DDI)
-  if (digits.length < 11 || digits.length > 15) throw new Error("Invalid phone length");
-  return digits;
-}
-
-function sanitizeMessage(message: string): string {
-  const text = String(message || "").trim();
-  if (!text) throw new Error("Empty message");
-  if (text.length > 2000) throw new Error("Message too long");
-  return text;
-}
-
-/** =========================
  *  Routes
  *  ========================= */
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
@@ -207,112 +188,6 @@ app.post(
       return;
     } catch (err) {
       next(err);
-      return;
-    }
-  }
-);
-
-/** =========================
- *  WhatsApp (Via Manager) - legado
- *  ========================= */
-
-// Inicializa no boot (LEGADO whatsapp-web.js)
-// Em produção, deve ficar OFF por padrão.
-if (process.env.LEGACY_WWEBJS_ENABLED === 'true') {
-  whatsappManager.initialize().catch((e) => {
-    Logger.error(`[Server] Failed to init WhatsApp: ${e}`);
-  });
-} else {
-  Logger.info('[Server] Legacy WhatsApp (whatsapp-web.js) disabled');
-}
-
-// LEGADO: whatsapp-web.js endpoints (renomeados para evitar conflito)
-app.get("/api/whatsapp/legacy/status", requireAuth, (_req, res) => {
-  const status = whatsappManager.getStatus();
-  res.json({
-    connected: status.connected,
-    initializing: status.initializing,
-  });
-});
-
-app.get("/api/whatsapp/legacy/qr", requireAuth, (_req, res) => {
-  const status = whatsappManager.getStatus();
-
-  if (status.connected) return res.json({ connected: true, qr: null });
-
-  if (!status.qr) {
-    return res.json({
-      connected: false,
-      qr: null,
-      hint: "QR not available yet. Try again.",
-    });
-  }
-  return res.json({ connected: false, qr: status.qr });
-});
-
-app.post("/api/whatsapp/legacy/init", requireAuth, async (_req, res, next) => {
-  try {
-    const status = whatsappManager.getStatus();
-    if (status.connected) return res.json({ ok: true, connected: true });
-
-    if (!status.initializing) {
-      whatsappManager.initialize().catch((e) => {
-        Logger.error(`[Server] re-init error: ${e}`);
-      });
-    }
-    res.json({ ok: true, connected: false, initializing: true });
-    return;
-  } catch (e: any) {
-    next(e);
-    return;
-  }
-});
-
-app.post("/api/whatsapp/legacy/logout", requireAuth, async (_req, res, next) => {
-  try {
-    await whatsappManager.destroy();
-
-    // Opcional: reiniciar automaticamente após logout para gerar novo QR
-    whatsappManager.initialize().catch((e) => {
-      Logger.error(`[Server] re-init after logout error: ${e}`);
-    });
-
-    res.json({ ok: true });
-    return;
-  } catch (e: any) {
-    next(e);
-    return;
-  }
-});
-
-// Rate limit extra para envio (evita abuso)
-const whatsappSendLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 20, // 20/min por IP (pode refinar por user depois)
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.post(
-  "/api/whatsapp/legacy/send",
-  requireAuth,
-  whatsappSendLimiter,
-  async (req, res, next) => {
-    try {
-      const status = whatsappManager.getStatus();
-      if (!status.connected)
-        return res.status(400).json({ error: "WhatsApp not connected" });
-
-      const phone = sanitizePhone(req.body?.phone);
-      const message = sanitizeMessage(req.body?.message);
-
-      const chatId = `${phone}@c.us`;
-      const result = await whatsappManager.sendMessage(chatId, message);
-
-      res.json({ ok: true, id: result?.id?.id || null });
-      return;
-    } catch (e: any) {
-      next(e);
       return;
     }
   }

@@ -8,6 +8,7 @@ import { canOnlyAccessAssigned } from "../lib/permissions";
 import { Logger } from "../lib/logger";
 import { redisSub } from "../lib/redis";
 import { EvolutionProvider } from "../providers/evolution-provider";
+import { supabaseAdmin } from "../lib/supabase";
 
 const router = Router();
 
@@ -81,14 +82,30 @@ router.get(
 router.get(
   "/events",
   // EventSource não suporta headers custom, então aceitamos token via query param
-  // requirePermission("inbox.read"), // Comentado temporariamente
   async (req: any, res: Response) => {
     // Aceitar token via query OU header
     const token = (req.query.token as string) || req.headers.authorization?.split(' ')[1];
 
-    // TODO: Validar token JWT aqui (por enquanto, passar sem validação em dev)
-    if (!token && process.env.NODE_ENV === 'production') {
-      return res.status(401).json({ error: 'Unauthorized' });
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized: Missing token' });
+    }
+
+    // Validar token JWT via Supabase
+    try {
+      const { data, error } = await supabaseAdmin.auth.getUser(token);
+      if (error || !data?.user) {
+        Logger.warn('SSE: Invalid token attempt', {
+          error: error?.message,
+          ip: req.ip
+        });
+        return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+      }
+      req.user = data.user;
+    } catch (authError) {
+      Logger.error('SSE: Auth validation failed', {
+        error: authError instanceof Error ? authError.message : String(authError)
+      });
+      return res.status(401).json({ error: 'Unauthorized: Auth failed' });
     }
 
     const { tenantId, accountId } = req.query as Record<string, string>;
