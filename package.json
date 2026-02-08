@@ -2,7 +2,6 @@
     "name": "ascend-sales-engine",
     "version": "0.1.0",
     "private": true,
-    "type": "module",
     "description": "AI-powered sales enablement platform with WhatsApp integration and meeting intelligence",
     "author": "Hunfly",
     "license": "UNLICENSED",
