@@ -5,20 +5,20 @@ FROM node:20-alpine AS frontend-builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files and configs
 COPY package*.json ./
 COPY tsconfig*.json ./
-COPY vite.config.ts ./
+COPY next.config.mjs ./
 COPY tailwind.config.ts ./
 COPY postcss.config.js ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install ALL dependencies (needed for build)
+RUN npm ci
 
-# Copy source
+# Copy source - Next.js uses app/ and src/ directories
+COPY app/ ./app/
 COPY src/ ./src/
 COPY public/ ./public/
-COPY index.html ./
 
 # Build frontend
 RUN npm run build
@@ -86,7 +86,7 @@ EXPOSE 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3001/api/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) })"
+    CMD node -e "require('http').get('http://localhost:3001/api/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) })"
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
