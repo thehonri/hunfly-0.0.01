@@ -19,6 +19,7 @@ RUN npm ci
 COPY app/ ./app/
 COPY src/ ./src/
 COPY public/ ./public/
+COPY drizzle/ ./drizzle/
 
 # Build frontend
 RUN npm run build
