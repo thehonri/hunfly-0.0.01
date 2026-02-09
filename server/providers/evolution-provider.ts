@@ -18,11 +18,16 @@ import {
 } from './whatsapp';
 import { Logger } from '../lib/logger';
 
-const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL;
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
+// Lazy initialization - don't fail at module load time
+function getEvolutionConfig() {
+  const url = process.env.EVOLUTION_API_URL;
+  const key = process.env.EVOLUTION_API_KEY;
 
-if (!EVOLUTION_API_URL) {
-  throw new Error('EVOLUTION_API_URL is required in environment');
+  if (!url) {
+    throw new Error('EVOLUTION_API_URL is required in environment');
+  }
+
+  return { url, key };
 }
 
 /**
@@ -32,11 +37,14 @@ export class EvolutionProvider implements WhatsAppProvider {
   readonly name = 'evolution';
 
   private headers: Record<string, string>;
+  private apiUrl: string;
 
   constructor() {
+    const config = getEvolutionConfig();
+    this.apiUrl = config.url;
     this.headers = {
       'Content-Type': 'application/json',
-      ...(EVOLUTION_API_KEY ? { apiKey: EVOLUTION_API_KEY } : {}),
+      ...(config.key ? { apiKey: config.key } : {}),
     };
   }
 
@@ -48,7 +56,7 @@ export class EvolutionProvider implements WhatsAppProvider {
     body?: unknown,
     method: 'GET' | 'POST' | 'DELETE' = 'POST'
   ): Promise<T> {
-    const url = `${EVOLUTION_API_URL}${path}`;
+    const url = `${this.apiUrl}${path}`;
 
     try {
       const response = await fetch(url, {
