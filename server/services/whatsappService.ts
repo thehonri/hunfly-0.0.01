@@ -1,16 +1,21 @@
 import { z } from "zod";
 
-const evolutionApiUrl = process.env.EVOLUTION_API_URL;
-const evolutionApiKey = process.env.EVOLUTION_API_KEY;
+function getConfig() {
+  const evolutionApiUrl = process.env.EVOLUTION_API_URL;
+  const evolutionApiKey = process.env.EVOLUTION_API_KEY;
 
-if (!evolutionApiUrl) {
-  throw new Error("EVOLUTION_API_URL is required");
+  if (!evolutionApiUrl) {
+    throw new Error("EVOLUTION_API_URL is required");
+  }
+
+  return {
+    url: evolutionApiUrl,
+    headers: {
+      "Content-Type": "application/json",
+      ...(evolutionApiKey ? { apiKey: evolutionApiKey } : {}),
+    },
+  };
 }
-
-const headers = {
-  "Content-Type": "application/json",
-  ...(evolutionApiKey ? { apiKey: evolutionApiKey } : {}),
-};
 
 const sendMessageSchema = z.object({
   instanceId: z.string(),
@@ -36,9 +41,10 @@ const getConversationsSchema = z.object({
 });
 
 async function request<T>(path: string, body?: unknown, method = "POST"): Promise<T> {
-  const response = await fetch(`${evolutionApiUrl}${path}`, {
+  const config = getConfig();
+  const response = await fetch(`${config.url}${path}`, {
     method,
-    headers,
+    headers: config.headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 
