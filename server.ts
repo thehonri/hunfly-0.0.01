@@ -137,6 +137,40 @@ app.get("/api/me", requireAuth, (req: any, res) => {
   res.json({ id: req.user.id, email: req.user.email });
 });
 
+// Retorna o workspace ativo do usuário (primeiro tenant + primeira conta WhatsApp)
+app.get("/api/workspace", requireAuth, async (req: any, res, next) => {
+  try {
+    const { getUserTenants } = await import("./server/lib/tenant.js");
+    const { db } = await import("./server/db.js");
+    const { whatsappAccounts } = await import("./drizzle/schema.js");
+    const { eq } = await import("drizzle-orm");
+
+    const memberships = await getUserTenants(req.user.id);
+    if (!memberships.length) {
+      return res.status(404).json({ error: "No workspace found for this user" });
+    }
+
+    const membership = memberships[0];
+    const tenantId = membership.tenantId;
+
+    const accounts = await db
+      .select()
+      .from(whatsappAccounts)
+      .where(eq(whatsappAccounts.tenantId, tenantId))
+      .limit(1);
+
+    return res.json({
+      tenantId,
+      tenantName: membership.tenant?.name ?? null,
+      role: membership.role,
+      accountId: accounts[0]?.id ?? null,
+      accountStatus: accounts[0]?.status ?? null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Prometheus metrics endpoint
 app.get("/api/metrics", async (_req, res) => {
   const metrics = await getMetrics();

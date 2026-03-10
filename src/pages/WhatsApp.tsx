@@ -6,10 +6,12 @@ import { Card } from "@/components/ui/card";
 import { MessageSquare, Phone, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import { useInboxSSE } from "@/hooks/useInboxSSE";
-
-const API_URL = 'http://localhost:3001';
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { apiFetch } from "@/lib/api";
 
 const WhatsApp = () => {
+  const { workspace, loading: workspaceLoading } = useWorkspace();
+
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'disconnected' | 'connecting' | 'connected'>('checking');
@@ -17,17 +19,19 @@ const WhatsApp = () => {
   const hasCheckedConnection = useRef(false);
   const isGeneratingQR = useRef(false);
 
-  const accountId = '00000000-0000-0000-0000-000000000003';
+  const accountId = workspace?.accountId ?? null;
 
   // Verificar status da conexão
   useEffect(() => {
-    if (hasCheckedConnection.current) return;
+    if (!accountId || hasCheckedConnection.current) return;
     hasCheckedConnection.current = true;
 
     const checkConnection = async () => {
       try {
         console.log('[STATUS CHECK] Checking connection status...');
-        const response = await fetch(`http://localhost:3001/api/whatsapp/status?accountId=${accountId}`);
+        const response = await fetch(`/api/whatsapp/status?accountId=${accountId}`, {
+          headers: { 'Content-Type': 'application/json' },
+        });
 
         if (!response.ok) {
           setConnectionStatus('disconnected');
@@ -62,8 +66,8 @@ const WhatsApp = () => {
 
   // Gerar QR Code - CORRIGIDO
   useEffect(() => {
-    // Não gerar se já conectado, já tem QR, ou já está gerando
-    if (connectionStatus !== 'disconnected' || qrCode || isGeneratingQR.current) {
+    // Não gerar se accountId não carregou, já conectado, já tem QR, ou já está gerando
+    if (!accountId || connectionStatus !== 'disconnected' || qrCode || isGeneratingQR.current) {
       return;
     }
 
@@ -74,7 +78,7 @@ const WhatsApp = () => {
         console.log('[QR] Fetching QR code...');
         setErrorMessage(null);
 
-        const response = await fetch(`http://localhost:3001/api/whatsapp/connect?accountId=${accountId}`);
+        const response = await fetch(`/api/whatsapp/connect?accountId=${accountId}`);
 
         if (!response.ok) {
           console.error('[QR] Failed:', response.status);
@@ -128,6 +132,16 @@ const WhatsApp = () => {
 
     generateQR();
   }, [connectionStatus, qrCode, accountId]);
+
+  if (workspaceLoading) {
+    return (
+      <DashboardLayout>
+        <div className="h-[calc(100vh-7rem)] flex items-center justify-center">
+          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   if (!whatsappConnected) {
     return (
@@ -212,7 +226,7 @@ const WhatsApp = () => {
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const tenantId = '00000000-0000-0000-0000-000000000001'; // TODO: obter do contexto de autenticação
+  const tenantId = workspace?.tenantId ?? null;
 
   // SSE - Receber eventos em tempo real
   const { lastEvent } = useInboxSSE({
@@ -278,17 +292,9 @@ const WhatsApp = () => {
     const fetchThreads = async () => {
       try {
         setLoading(true);
-        const response = await fetch(
-          `${API_URL}/api/inbox/threads?tenantId=${tenantId}&accountId=${accountId}&limit=50`
+        const data = await apiFetch<any>(
+          `/api/inbox/threads?tenantId=${tenantId}&accountId=${accountId}&limit=50`
         );
-
-        if (!response.ok) {
-          console.error('Failed to fetch threads:', response.status);
-          setLoading(false);
-          return;
-        }
-
-        const data = await response.json();
 
         if (data.ok && data.threads) {
           setConversations(data.threads.map((t: any) => ({
@@ -300,10 +306,9 @@ const WhatsApp = () => {
             unread: t.unreadCount || 0,
           })));
         }
-
-        setLoading(false);
       } catch (error) {
         console.error('Error fetching threads:', error);
+      } finally {
         setLoading(false);
       }
     };
@@ -319,16 +324,9 @@ const WhatsApp = () => {
 
     const fetchMessages = async () => {
       try {
-        const response = await fetch(
-          `${API_URL}/api/inbox/messages?tenantId=${tenantId}&threadId=${selectedConversation.id}&limit=50`
+        const data = await apiFetch<any>(
+          `/api/inbox/messages?tenantId=${tenantId}&threadId=${selectedConversation.id}&limit=50`
         );
-
-        if (!response.ok) {
-          console.error('Failed to fetch messages:', response.status);
-          return;
-        }
-
-        const data = await response.json();
 
         if (data.ok && data.messages) {
           setMessages(data.messages.map((m: any) => ({
@@ -337,7 +335,7 @@ const WhatsApp = () => {
             sender: m.isFromMe ? 'me' : 'them',
             time: new Date(m.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
             status: m.status,
-          })).reverse()); // Reverter para ordem cronológica
+          })).reverse());
         }
       } catch (error) {
         console.error('Error fetching messages:', error);
@@ -365,21 +363,14 @@ const WhatsApp = () => {
       setMessageInput('');
 
       // Enviar para API
-      const response = await fetch(`${API_URL}/api/inbox/send_message`, {
+      await apiFetch('/api/inbox/send_message', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           instanceId: `hunfly_${accountId}`,
           remoteJid: selectedConversation.remoteJid,
           message: messageInput,
         }),
       });
-
-      if (!response.ok) {
-        console.error('Failed to send message:', response.status);
-        // Remover mensagem temporária em caso de erro
-        setMessages(prev => prev.filter(m => m.id !== tempMessage.id));
-      }
     } catch (error) {
       console.error('Error sending message:', error);
     }
@@ -398,21 +389,17 @@ const WhatsApp = () => {
         `${m.sender === 'me' ? 'Vendedor' : 'Cliente'}: ${m.text}`
       ).join('\n');
 
-      const response = await fetch(`${API_URL}/api/extension/meeting-suggestion`, {
+      const data = await apiFetch<any>('/api/extension/meeting-suggestion', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           transcription,
           question: 'Sugira a melhor resposta para continuar essa conversa de vendas'
         }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.suggestion) {
-          setAiSuggestion(data.suggestion);
-          setMessageInput(data.suggestion);
-        }
+      if (data.suggestion) {
+        setAiSuggestion(data.suggestion);
+        setMessageInput(data.suggestion);
       }
     } catch (error) {
       console.error('Error generating AI suggestion:', error);
